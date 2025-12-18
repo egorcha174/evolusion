@@ -8,6 +8,7 @@
 	$: if ($activeClient) {
 		const unsubscribe = $activeClient.entities.subscribe(value => entities = value);  <title>Evolusion Dashboard</title>
 </svelte:head>
+</script>
 
 <main>
   <h1>Evolusion - Home Assistant</h1>
