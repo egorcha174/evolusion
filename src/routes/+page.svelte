@@ -4,8 +4,7 @@
   import { activeClient } from '$lib/stores/servers';
   import { get } from 'svelte/store';
   
-  $: entities = $activeClient?.entities ? get($activeClient.entities) : [];
-</script>
+	$: entities = $activeClient?.entities ? $activeClient.entities : [];</script>
 
 <svelte:head>
   <title>Evolusion Dashboard</title>
