@@ -2,6 +2,9 @@
   import ServerList from '../components/ServerList.svelte';
   import EntityCard from '../components/EntityCard.svelte';
   import { activeClient } from '$lib/stores/servers';
+  import { get } from 'svelte/store';
+  
+  $: entities = $activeClient?.entities ? get($activeClient.entities) : [];
 </script>
 
 <svelte:head>
@@ -14,7 +17,7 @@
   <h2>Entities</h2>
   {#if $activeClient}
     <div class="grid">
-          {#each ($activeClient && $activeClient.entities ? $($activeClient.entities) : []) as entity (entity.entity_id)}
+          {#each entities as entity (entity.entity_id)}
         <EntityCard {entity} />
       {/each}
     </div>
