@@ -141,6 +141,4 @@ export class HAClient {
       service,
       service_data: serviceData
     });
-  }
-  }
 }
