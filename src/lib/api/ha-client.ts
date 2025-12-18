@@ -133,4 +133,14 @@ export class HAClient {
       this.ws = null;
     }
   }
+
+    async callService(domain: string, service: string, serviceData: any): Promise<any> {
+    return this.sendWithResponse({
+      type: 'call_service',
+      domain,
+      service,
+      service_data: serviceData
+    });
+  }
+  }
 }
