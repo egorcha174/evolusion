@@ -14,7 +14,7 @@
   <h2>Entities</h2>
   {#if $activeClient}
     <div class="grid">
-      {#each $activeClient.entities as entity (entity.entity_id)}
+            {#each ($activeClient.entities || []) as entity (entity.entity_id)}
         <EntityCard {entity} />
       {/each}
     </div>
