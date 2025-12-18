@@ -4,9 +4,9 @@
   import { activeClient } from '$lib/stores/servers';
   import { get } from 'svelte/store';
   
-	$: entities = $activeClient?.entities ? get($activeClient.entities) : [];
-<svelte:head>
-  <title>Evolusion Dashboard</title>
+	let entities: any[] = [];<svelte:head>
+	$: if ($activeClient) {
+		const unsubscribe = $activeClient.entities.subscribe(value => entities = value);  <title>Evolusion Dashboard</title>
 </svelte:head>
 
 <main>
