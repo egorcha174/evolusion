@@ -3,22 +3,26 @@
   import EntityCard from '../components/EntityCard.svelte';
   import { activeClient } from '$lib/stores/servers';
   import { get } from 'svelte/store';
-  
-	et entities: any[] = [];
+
+  let entities: any[] = [];
+
+  $: if ($activeClient) {
+    const unsubscribe = $activeClient.entities.subscribe(value => entities = value);
+  }
 </script>
+
 <svelte:head>
-	$: if ($activeClient) {
-		const unsubscribe = $activeClient.entities.subscribe(value => entities = value);  <title>Evolusion Dashboard</title>
+  <title>Evolusion Dashboard</title>
 </svelte:head>
-</script>
 
 <main>
   <h1>Evolusion - Home Assistant</h1>
   <ServerList />
+
   <h2>Entities</h2>
   {#if $activeClient}
     <div class="grid">
-          {#each entities as entity (entity.entity_id)}
+      {#each entities as entity (entity.entity_id)}
         <EntityCard {entity} />
       {/each}
     </div>
@@ -28,6 +32,15 @@
 </main>
 
 <style>
-  main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+  main {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+  }
 </style>
