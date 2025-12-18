@@ -7,8 +7,14 @@
   
   function addServer() {
     if (newServer.name && newServer.url && newServer.token) {
-      serverActions.add({ id: crypto.randomUUID(), ...newServer as HAServerConfig });
-      newServer = { name: '', url: '', token: '', enabled: true };
+            const newServerWithId: HAServerConfig = {
+        id: crypto.randomUUID(),
+        name: newServer.name,
+        url: newServer.url,
+        token: newServer.token,
+        enabled: true
+      };
+            serverActions.add(newServerWithId);
       showAddForm = false;
     }
   }
