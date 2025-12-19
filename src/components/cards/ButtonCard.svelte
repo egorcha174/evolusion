@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { UiEntity } from '../../../lib/models';
-  import { activeClient } from '../../../lib/stores/servers';
+  import { activeClient } from '$lib/stores/servers';
 
   export let entity: UiEntity;
   let loading = false;
