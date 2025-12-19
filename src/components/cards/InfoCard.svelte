@@ -13,8 +13,8 @@
       if (action) {
 const [domain, service] = action.service.split('.');
 				await $activeClient.callService(domain, service, action.serviceData || {});
-			}     }
-    } catch (err) {
+			}     
+		}catch (err) {
       console.error('Error executing action:', err);
     } finally {
       loading = false;
