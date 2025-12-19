@@ -8,6 +8,17 @@ export const servers = writable<HAServerConfig[]>([]);
 // Active server ID
 export const activeServerId = writable<string | null>(null);
 
+// Connection status store
+export type ConnectionStatus = { status: 'ok' | 'error' | 'pending'; message?: string };
+export const serverConnectionStatus = writable<Record<string, ConnectionStatus>>({});
+
+export function setConnectionStatus(id: string, status: 'ok' | 'error' | 'pending', message?: string) {
+  serverConnectionStatus.update((prev) => ({
+    ...prev,
+    [id]: { status, message },
+  }));
+}
+
 // HA Clients map
 const clients = new Map<string, HAClient>();
 
@@ -16,57 +27,23 @@ export const activeClient = derived(
   [servers, activeServerId],
   ([$servers, $activeServerId]) => {
     if (!$activeServerId) return null;
-    
+
     let client = clients.get($activeServerId);
     if (!client) {
       const serverConfig = $servers.find(s => s.id === $activeServerId);
       if (serverConfig && serverConfig.enabled) {
         client = new HAClient(serverConfig);
         clients.set($activeServerId, client);
-        client.connect().catch(console.error);
+        
+        setConnectionStatus($activeServerId, 'pending');
+        client.connect()
+          .then(() => setConnectionStatus($activeServerId, 'ok'))
+          .catch((err) => {
+            console.error('HA Connection error:', err);
+            setConnectionStatus($activeServerId, 'error', err.message instanceof Error ? err.message : String(err));
+          });
       }
     }
     return client;
   }
 );
-
-// Server actions
-export const serverActions = {
-  add(server: HAServerConfig) {
-    servers.update(s => [...s, server]);
-  },
-  
-  remove(id: string) {
-    const client = clients.get(id);
-    if (client) {
-      client.disconnect();
-      clients.delete(id);
-    }
-    servers.update(s => s.filter(server => server.id !== id));
-  },
-  
-  update(id: string, updates: Partial<HAServerConfig>) {
-    servers.update(s => 
-      s.map(server => server.id === id ? { ...server, ...updates } : server)
-    );
-  },
-  
-  setActive(id: string) {
-    activeServerId.set(id);
-  }
-};
-
-// Load from localStorage
-if (typeof window !== 'undefined') {
-  const stored = localStorage.getItem('ha_servers');
-  if (stored) {
-    try {
-      servers.set(JSON.parse(stored));
-    } catch (e) {
-      console.error('Failed to load servers:', e);
-    }
-  }
-  servers.subscribe(value => {
-    localStorage.setItem('ha_servers', JSON.stringify(value));
-  });
-}
