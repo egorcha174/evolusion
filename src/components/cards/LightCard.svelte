@@ -44,8 +44,8 @@
 
   {#if entity.state === 'on' && entity.brightness !== undefined}
     <div class="brightness-control">
-      <label>Яркость: {entity.brightness}%</label>
-      <input
+   for="brightness-slider"    <label>Яркость: {entity.brightness}%</label>
+      <input id="brightness-slider"
         type="range"
         min="0"
         max="100"
