@@ -1,15 +1,4 @@
-export type UiEntityKind =
-  | 'binary'
-  | 'sensor'
-  | 'climate'
-  | 'media'
-  | 'vacuum'
-  | 'mode'
-  | 'button'
-  | 'info'
-  | 'script'
-  | 'automation';
-
+export type UiEntityKind = 'sensor' | 'switch' | 'light' | 'button';
 export type UiSeverity = 'normal' | 'warning' | 'error';
 
 export interface UiEntityAction {
@@ -37,6 +26,10 @@ export interface UiEntity {
   // Состояние
   state: string;              // Сырой state: 'on', 'off', 'heat', 'cool', 'playing', ...
   value?: number | string;    // Главная величина (температура, мощность, %, уровень сигнала и т.п.)
+    brightness?: number;       // 0-255 for lights
+  colorMode?: string;          // 'rgb', 'xy', 'hs', etc.
+  color?: { r: number; g: number; b: number }; // RGB color
+  colorTemp?: number;          // Color temperature in mireds
   unit?: string;              // Единица измерения (°, %, W, кВт·ч, дБм, ...)
   severity?: UiSeverity;      // Для цвета/акцента (например, низкий заряд, ошибка и т.п.)
   isUnavailable?: boolean;    // Удобный флаг на основе state / attributes
