@@ -1,7 +1,6 @@
 // entity-kind.ts
 // Определение типов сущностей и их характеристик
 
-import type { UiEntityKind } from './ui-model';
 
 export type UiEntityKind = 'sensor' | 'switch' | 'light' | 'button';
 
