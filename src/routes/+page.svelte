@@ -1,9 +1,13 @@
 <script lang="ts">
   import ServerList from '../components/ServerList.svelte';
   import UiEntityCard from '../components/UiEntityCard.svelte';
-  import { activeClient } from '$lib/stores/servers';
-  import { mapHaStateToUiEntity } from '$lib/models';
-  import type { UiEntity } from '$lib/models';
+  import SwitchCard from '../components/cards/SwitchCard.svelte';
+  import LightCard from '../components/cards/LightCard.svelte';
+  import SensorCard from '../components/cards/SensorCard.svelte';
+  import ButtonCard from '../components/cards/ButtonCard.svelte';
+  import { activeClient } from '../lib/stores/servers';
+  import { mapHaStateToUiEntity } from '../lib/models';
+  import type { UiEntity } from '../lib/models';
 
   let uiEntities: UiEntity[] = [];
   let filterKind: string | null = null;
@@ -31,87 +35,62 @@
   );
 </script>
 
-<svelte:head>
-  <title>Evolusion Dashboard</title>
-</svelte:head>
-
 <main>
-  <h1>Evolusion - Home Assistant</h1>
-
   <ServerList />
 
-  <h2>Entities ({filteredEntities.length})</h2>
-  {#if $activeClient}
-    <!-- Фильтры по типам -->
-    <div class="filters">
-      <button 
-        class:active={filterKind === null}
-        on:click={() => filterKind = null}
+  <div class="container mt-8">
+    <h1 class="text-3xl font-bold mb-6">Эволюция Dashboard</h1>
+
+    <!-- Кнопки фильтра по типам -->
+    <div class="mb-6 flex gap-2 flex-wrap">
+      <button
+        class="px-4 py-2 rounded"
+        class:bg-blue-500={filterKind === null}
+        class:text-white={filterKind === null}
+        class:bg-gray-200={filterKind !== null}
+        on:click={() => (filterKind = null)}
       >
-        All ({uiEntities.length})
+        Все ({uiEntities.length})
       </button>
       {#each Object.entries(kindGroups) as [kind, count]}
         <button
-          class:active={filterKind === kind}
-          on:click={() => filterKind = kind}
+          class="px-4 py-2 rounded capitalize"
+          class:bg-blue-500={filterKind === kind}
+          class:text-white={filterKind === kind}
+          class:bg-gray-200={filterKind !== kind}
+          on:click={() => (filterKind = kind)}
         >
           {kind} ({count})
         </button>
       {/each}
     </div>
 
-    <!-- Сетка карточек -->
-    <div class="grid">
+    <!-- Грид карток -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {#each filteredEntities as entity (entity.id)}
-        <UiEntityCard {entity} />
+        <UiEntityCard {entity}>
+          {#if entity.kind === 'switch'}
+            <SwitchCard {entity} />
+          {:else if entity.kind === 'light'}
+            <LightCard {entity} />
+          {:else if entity.kind === 'sensor'}
+            <SensorCard {entity} />
+          {:else if entity.kind === 'button'}
+            <ButtonCard {entity} />
+          {/if}
+        </UiEntityCard>
       {/each}
     </div>
-  {:else}
-    <p>Connect to a server</p>
-  {/if}
+  </div>
 </main>
 
 <style>
   main {
-    padding: 2rem;
-    max-width: 1400px;
+    padding: 1rem;
+  }
+
+  .container {
+    max-width: 1200px;
     margin: 0 auto;
-  }
-
-  h1, h2 {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  }
-
-  .filters {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
-  }
-
-  .filters button {
-    padding: 0.5rem 1rem;
-    background: #f0f0f0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-  }
-
-  .filters button:hover {
-    background: #e8e8e8;
-  }
-
-  .filters button.active {
-    background: #007bff;
-    color: white;
-    border-color: #007bff;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1rem;
   }
 </style>
