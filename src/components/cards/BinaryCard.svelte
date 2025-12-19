@@ -11,8 +11,8 @@
     try {
       const action = entity.actions.find(a => a.id === 'toggle');
       if (action) {
-        await $activeClient.callService(action.service, action.serviceData || {});
-      }
+const [domain, service] = action.service.split('.');
+        await $activeClient.callService(domain, service, action.serviceData || { entity_id: entity.id });      }
     } catch (err) {
       console.error('Error toggling:', err);
     } finally {
