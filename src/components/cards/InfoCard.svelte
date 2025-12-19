@@ -11,8 +11,9 @@
     try {
       const action = entity.actions[0];
       if (action) {
-        await $activeClient.callService(action.service, action.serviceData || {});
-      }
+const [domain, service] = action.service.split('.');
+				await $activeClient.callService(domain, service, action.serviceData || {});
+			}      }
     } catch (err) {
       console.error('Error executing action:', err);
     } finally {
