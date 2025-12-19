@@ -6,8 +6,8 @@
   import SensorCard from '../components/cards/SensorCard.svelte';
   import ButtonCard from '../components/cards/ButtonCard.svelte';
   import { activeClient } from '../lib/stores/servers';
-  import { mapHaStateToUiEntity } from '../lib/models';
-  import type { UiEntity } from '../lib/models';
+import { mapHaStateToUiEntity } from '../lib/models';
+import type { UiEntity } from '../lib/models';
 
   let uiEntities: UiEntity[] = [];
   let filterKind: string | null = null;
