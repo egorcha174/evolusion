@@ -1,4 +1,5 @@
-export type UiEntityKind = 'sensor' | 'switch' | 'light' | 'button';
+import type { UiEntityKind } from './entity-kind';
+
 export type UiSeverity = 'normal' | 'warning' | 'error';
 
 export interface UiEntityAction {
