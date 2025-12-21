@@ -1,8 +1,8 @@
 import { writable, get, derived } from 'svelte/store';
 import type { HAServerConfig } from '../types/ha';
 import { HAClient } from '../api/ha-client';
-import { encryptToken, decryptToken } from '../utils/crypto';
-import { CONFIG, MESSAGES } from '../constants/config';
+import { encryptToken, decryptToken } from '$utils/crypto';
+import { CONFIG, MESSAGES } from '$constants/config';
 import { notifications } from './notifications';
 import { isLoading } from './loading';
 import { z } from 'zod';
