@@ -7,6 +7,10 @@ import { notifications } from './notifications';
 import { isLoading } from './loading';
 import { z } from 'zod';
 
+// ========================================
+// TYPES & SCHEMAS
+// ========================================
+
 // Zod схема для валидации конфигурации сервера
 const HAServerConfigSchema = z.object({
   id: z.string().min(1, 'ID обязателен'),
@@ -16,6 +20,15 @@ const HAServerConfigSchema = z.object({
   enabled: z.boolean().default(true)
 });
 
+export type ConnectionStatus = { 
+  status: 'ok' | 'error' | 'pending'; 
+  message?: string 
+};
+
+// ========================================
+// STORES
+// ========================================
+
 // Server configurations store
 export const servers = writable<HAServerConfig[]>([]);
 
@@ -23,53 +36,158 @@ export const servers = writable<HAServerConfig[]>([]);
 export const activeServerId = writable<string | null>(null);
 
 // Connection status store
-export type ConnectionStatus = { status: 'ok' | 'error' | 'pending'; message?: string };
 export const serverConnectionStatus = writable<Record<string, ConnectionStatus>>({});
 
 // HA Clients map
 const clients = new Map<string, HAClient>();
 
-// Функция для установки статуса подключения
-export function setConnectionStatus(id: string, status: 'ok' | 'error' | 'pending', message?: string) {
+// ========================================
+// HELPER FUNCTIONS
+// ========================================
+
+/**
+ * Извлекает сообщение об ошибке из различных типов ошибок
+ */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Неизвестная ошибка';
+}
+
+/**
+ * Показывает уведомление с заданными параметрами
+ */
+function showNotification(
+  type: 'success' | 'error' | 'info',
+  title: string,
+  message: string,
+  duration?: number
+): void {
+  notifications.show({ type, title, message, duration });
+}
+
+/**
+ * Валидирует и дешифрует конфигурацию сервера
+ */
+function validateAndDecryptServer(server: any): HAServerConfig | null {
+  try {
+    const decrypted = {
+      ...server,
+      accessToken: decryptToken(server.accessToken)
+    };
+    return HAServerConfigSchema.parse(decrypted);
+  } catch (error) {
+    console.error('[Servers] Ошибка валидации сервера:', error);
+    return null;
+  }
+}
+
+/**
+ * Шифрует accessToken в конфигурации сервера
+ */
+function encryptServer(server: HAServerConfig): any {
+  return {
+    ...server,
+    accessToken: encryptToken(server.accessToken)
+  };
+}
+
+// ========================================
+// CONNECTION MANAGEMENT
+// ========================================
+
+/**
+ * Устанавливает статус подключения для сервера
+ */
+export function setConnectionStatus(
+  id: string, 
+  status: 'ok' | 'error' | 'pending', 
+  message?: string
+): void {
   serverConnectionStatus.update((prev) => ({
     ...prev,
-    [id]: { status, message },
+    [id]: { status, message }
   }));
 }
 
-// Загрузка серверов из localStorage с валидацией и дешифрованием
+/**
+ * Отключает и удаляет клиент для указанного сервера
+ */
+function disconnectClient(serverId: string): void {
+  const client = clients.get(serverId);
+  if (client) {
+    client.disconnect();
+    clients.delete(serverId);
+  }
+}
+
+/**
+ * Отключает все клиенты и очищает Map
+ */
+export function disconnectAllClients(): void {
+  clients.forEach((client) => client.disconnect());
+  clients.clear();
+}
+
+/**
+ * Создает и подключает клиент для указанного сервера
+ */
+function createAndConnectClient(
+  serverId: string,
+  serverConfig: HAServerConfig
+): HAClient {
+  const client = new HAClient(serverConfig);
+  clients.set(serverId, client);
+  
+  setConnectionStatus(serverId, 'pending');
+  
+  client.connect()
+    .then(() => {
+      setConnectionStatus(serverId, 'ok');
+      showNotification(
+        'success',
+        MESSAGES.CONNECTION_SUCCESS,
+        `Подключение к ${serverConfig.name} успешно установлено`
+      );
+    })
+    .catch((err) => {
+      const message = getErrorMessage(err);
+      console.error('[Servers] Ошибка подключения:', err);
+      
+      setConnectionStatus(serverId, 'error', message);
+      showNotification('error', MESSAGES.CONNECTION_ERROR, message, 5000);
+    });
+  
+  return client;
+}
+
+// ========================================
+// STORAGE OPERATIONS
+// ========================================
+
+/**
+ * Загружает серверы из localStorage с валидацией и дешифрованием
+ */
 export function loadServersFromStorage(): HAServerConfig[] {
   try {
     const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
     if (!stored) return [];
-
+    
     const parsed = JSON.parse(stored);
     
     // Валидируем и дешифруем каждый сервер
-    const validated = parsed.map((server: any) => {
-      try {
-        // Дешифруем токен
-        const decrypted = {
-          ...server,
-          accessToken: decryptToken(server.accessToken)
-        };
-        
-        // Валидируем
-        return HAServerConfigSchema.parse(decrypted);
-      } catch (error) {
-        console.error('[Servers] Ошибка валидации сервера:', error);
-        return null;
-      }
-    }).filter(Boolean);
-
+    const validated = parsed
+      .map(validateAndDecryptServer)
+      .filter((server): server is HAServerConfig => server !== null);
+    
     return validated;
   } catch (error) {
     console.error('[Servers] Ошибка при загрузке серверов:', error);
-    notifications.show({
-      type: 'error',
-      title: MESSAGES.STORAGE_ERROR,
-      message: error instanceof Error ? error.message : 'Неизвестная ошибка'
-    });
+    showNotification(
+      'error',
+      MESSAGES.STORAGE_ERROR,
+      getErrorMessage(error)
+    );
     
     // Очищаем поврежденные данные
     localStorage.removeItem(CONFIG.STORAGE_KEY);
@@ -77,27 +195,33 @@ export function loadServersFromStorage(): HAServerConfig[] {
   }
 }
 
-// Сохранение серверов в localStorage с шифрованием
+/**
+ * Сохраняет серверы в localStorage с шифрованием
+ */
 export function saveServersToStorage(serversData: HAServerConfig[]): void {
   try {
-    const encrypted = serversData.map(server => ({
-      ...server,
-      accessToken: encryptToken(server.accessToken)
-    }));
-
+    const encrypted = serversData.map(encryptServer);
     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(encrypted));
   } catch (error) {
     console.error('[Servers] Ошибка при сохранении серверов:', error);
-    notifications.show({
-      type: 'error',
-      title: MESSAGES.STORAGE_ERROR,
-      message: 'Не удалось сохранить данные серверов'
-    });
+    showNotification(
+      'error',
+      MESSAGES.STORAGE_ERROR,
+      'Не удалось сохранить данные серверов'
+    );
   }
 }
 
-// Добавление нового сервера
-export async function addServer(config: Omit<HAServerConfig, 'id'>): Promise<{ success: boolean; error?: string }> {
+// ========================================
+// SERVER CRUD OPERATIONS
+// ========================================
+
+/**
+ * Добавляет новый сервер
+ */
+export async function addServer(
+  config: Omit<HAServerConfig, 'id'>
+): Promise<{ success: boolean; error?: string }> {
   try {
     isLoading.start();
     
@@ -115,104 +239,85 @@ export async function addServer(config: Omit<HAServerConfig, 'id'>): Promise<{ s
       saveServersToStorage(updated);
       return updated;
     });
-
-    notifications.show({
-      type: 'success',
-      title: 'Сервер добавлен',
-      message: `Сервер "${config.name}" успешно добавлен`
-    });
-
+    
+    showNotification(
+      'success',
+      'Сервер добавлен',
+      `Сервер "${config.name}" успешно добавлен`
+    );
+    
     return { success: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    
-    notifications.show({
-      type: 'error',
-      title: MESSAGES.VALIDATION_ERROR,
-      message,
-      duration: 5000
-    });
-
+    const message = getErrorMessage(error);
+    showNotification('error', MESSAGES.VALIDATION_ERROR, message, 5000);
     return { success: false, error: message };
   } finally {
     isLoading.stop();
   }
 }
 
-// Удаление сервера
+/**
+ * Удаляет сервер
+ */
 export function removeServer(serverId: string): void {
   // Отключаем клиент если есть
-  const client = clients.get(serverId);
-  if (client) {
-    client.disconnect();
-    clients.delete(serverId);
-  }
-
+  disconnectClient(serverId);
+  
+  // Удаляем сервер из списка
   servers.update(s => {
     const updated = s.filter(server => server.id !== serverId);
     saveServersToStorage(updated);
     return updated;
   });
-
+  
+  // Удаляем статус подключения
   serverConnectionStatus.update(s => {
     const { [serverId]: _, ...rest } = s;
     return rest;
   });
-
-  notifications.show({
-    type: 'info',
-    title: 'Сервер удален',
-    message: 'Сервер успешно удален из списка'
-  });
+  
+  showNotification(
+    'info',
+    'Сервер удален',
+    'Сервер успешно удален из списка'
+  );
 }
 
-// Active client store с улучшенной обработкой ошибок
+// ========================================
+// DERIVED STORES
+// ========================================
+
+/**
+ * Active client store с улучшенной обработкой ошибок
+ */
 export const activeClient = derived(
   [servers, activeServerId],
   ([$servers, $activeServerId]) => {
     if (!$activeServerId) return null;
-
-    let client = clients.get($activeServerId);
     
-    if (!client) {
-      const serverConfig = $servers.find(s => s.id === $activeServerId);
-      
-      if (serverConfig && serverConfig.enabled) {
-        client = new HAClient(serverConfig);
-        clients.set($activeServerId, client);
-        
-        setConnectionStatus($activeServerId, 'pending');
-        
-        client.connect()
-          .then(() => {
-            setConnectionStatus($activeServerId, 'ok');
-            notifications.show({
-              type: 'success',
-              title: MESSAGES.CONNECTION_SUCCESS,
-              message: `Подключение к ${serverConfig.name} успешно установлено`
-            });
-          })
-          .catch((err) => {
-            const message = err instanceof Error ? err.message : String(err);
-            console.error('[Servers] Ошибка подключения:', err);
-            
-            setConnectionStatus($activeServerId, 'error', message);
-            
-            notifications.show({
-              type: 'error',
-              title: MESSAGES.CONNECTION_ERROR,
-              message,
-              duration: 5000
-            });
-          });
-      }
+    // Проверяем существующий клиент
+    let client = clients.get($activeServerId);
+    if (client) return client;
+    
+    // Находим конфигурацию сервера
+    const serverConfig = $servers.find(s => s.id === $activeServerId);
+    
+    // Создаем новый клиент если сервер найден и включен
+    if (serverConfig?.enabled) {
+      return createAndConnectClient($activeServerId, serverConfig);
     }
     
-    return client;
+    return null;
   }
 );
 
-// Инициализация: загружаем серверы при старте
+// ========================================
+// INITIALIZATION
+// ========================================
+
+/**
+ * Инициализация: загружаем серверы при старте
+ */
 if (typeof window !== 'undefined') {
   const loadedServers = loadServersFromStorage();
   servers.set(loadedServers);
