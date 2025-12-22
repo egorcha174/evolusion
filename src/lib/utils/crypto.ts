@@ -83,6 +83,24 @@ export function decryptServerConfig(encryptedData: string): any {
 }
 
 /**
+ * Encrypts data using XOR cipher and base64 encoding
+ * @param data - The data to encrypt
+ * @returns Encrypted and base64-encoded data
+ */
+export function encryptData(data: string): Promise<string> {
+  return Promise.resolve(encryptServerConfig(JSON.parse(data)));
+}
+
+/**
+ * Decrypts encrypted data
+ * @param encryptedData - The encrypted data to decrypt
+ * @returns Decrypted data
+ */
+export function decryptData(encryptedData: string): Promise<string> {
+  return Promise.resolve(JSON.stringify(decryptServerConfig(encryptedData)));
+}
+
+/**
  * Generates a random UUID v4
  * @returns Random UUID string
  */

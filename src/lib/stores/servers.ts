@@ -1,7 +1,7 @@
 import { writable, get, derived } from 'svelte/store';
 import type { HAServerConfig } from '../types/ha';
 import { HAClient } from '../api/ha-client';
-import { encryptToken, decryptToken, encryptServerConfig, decryptServerConfig } from '$utils/crypto';
+import { encryptToken, decryptToken, encryptServerConfig, decryptServerConfig, encryptData, decryptData } from '$utils/crypto';
 import { CONFIG, MESSAGES } from '$constants/config';
 import { notifications } from './notifications';
 import { isLoading } from './loading';
@@ -26,46 +26,73 @@ export type ConnectionStatus = {
 };
 
 // ========================================
-// PERSISTED STORES FOR SVELTE 5 RUNES
+// ENCRYPTED STORAGE UTILITIES
 // ========================================
 
 /**
- * Создает persisted-store для Svelte
- * Автоматически синхронизирует состояние с localStorage
- * Безопасная реализация с обработкой ошибок и логированием
+ * Загружает данные из localStorage с дешифровкой
  */
-function createPersistedStore<T>(key: string, initial: T) {
-  // Используем традиционный writable store вместо runes
+async function loadEncryptedData(key: string): Promise<any> {
+  try {
+    const encrypted = localStorage.getItem(key);
+    if (encrypted) {
+      const decrypted = await decryptData(encrypted);
+      return JSON.parse(decrypted);
+    }
+    return null;
+  } catch (error) {
+    console.error('[EncryptedStorage] Error loading data for', key, error);
+    return null;
+  }
+}
+
+/**
+ * Сохраняет данные в localStorage с шифрованием
+ */
+async function saveEncryptedData(key: string, data: any): Promise<void> {
+  try {
+    const encrypted = await encryptData(JSON.stringify(data));
+    localStorage.setItem(key, encrypted);
+  } catch (error) {
+    console.error('[EncryptedStorage] Error saving data for', key, error);
+  }
+}
+
+// ========================================
+// ENCRYPTED PERSISTED STORE
+// ========================================
+
+/**
+ * Создает зашифрованный persisted-store для Svelte
+ * Автоматически синхронизирует состояние с зашифрованным localStorage
+ */
+function createEncryptedPersistedStore<T>(key: string, initial: T) {
   const { subscribe, set, update } = writable<T>(initial);
 
   if (typeof window !== 'undefined') {
-    // Читаем из localStorage при инициализации с обработкой ошибок
-    try {
-      const saved = window.localStorage.getItem(key);
-      if (saved != null) {
-        try {
-          const parsed = JSON.parse(saved);
-          console.log('[PersistedStore] init', key, parsed);
-          set(parsed);
-        } catch (e) {
-          console.error('[PersistedStore] invalid data for', key, e);
-          // Если данные битые — очищаем
-          window.localStorage.removeItem(key);
+    // Загружаем и дешифруем данные при инициализации
+    (async () => {
+      try {
+        const loaded = await loadEncryptedData(key);
+        if (loaded !== null) {
+          console.log('[EncryptedStore] init', key, loaded);
+          set(loaded);
+        } else {
           set(initial);
         }
-      }
-    } catch (e) {
-      console.error('[PersistedStore] error reading from localStorage for', key, e);
-      set(initial);
-    }
-
-    // Подписываемся на изменения и сохраняем в localStorage с обработкой ошибок
-    subscribe(value => {
-      try {
-        console.log('[PersistedStore] update', key, value);
-        window.localStorage.setItem(key, JSON.stringify(value));
       } catch (e) {
-        console.error('[PersistedStore] save error for', key, e);
+        console.error('[EncryptedStore] error loading from storage for', key, e);
+        set(initial);
+      }
+    })();
+
+    // Подписываемся на изменения и сохраняем с шифрованием
+    subscribe(async (value) => {
+      try {
+        console.log('[EncryptedStore] update', key, value);
+        await saveEncryptedData(key, value);
+      } catch (e) {
+        console.error('[EncryptedStore] save error for', key, e);
       }
     });
   }
@@ -78,14 +105,14 @@ function createPersistedStore<T>(key: string, initial: T) {
 }
 
 // ========================================
-// PERSISTED STORES
+// ENCRYPTED PERSISTED STORES
 // ========================================
 
-// Server configurations persisted store
-const persistedServers = createPersistedStore<HAServerConfig[]>('fusion-ha-servers', []);
+// Server configurations encrypted persisted store
+const persistedServers = createEncryptedPersistedStore<HAServerConfig[]>('ha_servers_enc', []);
 
-// Active server ID persisted store
-const persistedActiveServerId = createPersistedStore<string | null>('fusion-ha-connection', null);
+// Active server ID encrypted persisted store
+const persistedActiveServerId = createEncryptedPersistedStore<string | null>('ha_connection_enc', null);
 
 // ========================================
 // STORES
