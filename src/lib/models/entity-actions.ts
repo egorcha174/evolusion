@@ -81,10 +81,9 @@ export function computeActions(raw: HaState): UiEntityAction[] {
   if (domain === 'automation') {
     return [
       {
-        id: 'toggle',
-        label: 'Вкл/выкл',
-        icon: 'mdi:play-pause',
-        service: 'automation.toggle',
+        id: 'trigger',
+      label: 'Запустить',        icon: 'mdi:play-pause',
+        service: 'automation.trigger',
         serviceData: { entity_id: id },
         primary: true
       }
