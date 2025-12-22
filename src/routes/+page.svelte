@@ -5,24 +5,38 @@
   import LightCard from '../components/cards/LightCard.svelte';
   import SensorCard from '../components/cards/SensorCard.svelte';
   import ButtonCard from '../components/cards/ButtonCard.svelte';
-  
+
   import { activeClient, serverConnectionStatus } from '../lib/stores/servers';
   import { uiEntities } from '../lib/stores/entities';
   import { loadingStore } from '../lib/stores/loading';
-  
+
   let filterKind: string | null = null;
-  
+
+  // Активный сервер
   $: activeServerId = $activeClient?.config?.id;
-  $: status = activeServerId ? $serverConnectionStatus[activeServerId] : null;
-  $: isLoading = $loadingStore['entities'] || status?.status === 'pending';
 
-  // Фильтруем по типу (kind)
+  // Статус подключения (или null)
+  $: status =
+    activeServerId && $serverConnectionStatus
+      ? $serverConnectionStatus[activeServerId] ?? null
+      : null;
+
+  // Безопасное чтение флага загрузки
+  $: entitiesLoading =
+    ($loadingStore && ($loadingStore.entities ?? $loadingStore['entities'])) === true;
+
+  $: isLoading = entitiesLoading || status?.status === 'pending';
+
+  // Массив сущностей по умолчанию пустой
+  $: allEntities = Array.isArray($uiEntities) ? $uiEntities : [];
+
+  // Фильтрация по типу (kind)
   $: filteredEntities = filterKind
-    ? $uiEntities.filter((e) => e.kind === filterKind)
-    : $uiEntities;
+    ? allEntities.filter((e) => e.kind === filterKind)
+    : allEntities;
 
-  // Группируем по kind для статистики
-  $: kindGroups = $uiEntities.reduce(
+  // Группировка по kind для статистики
+  $: kindGroups = allEntities.reduce(
     (acc, e) => {
       if (!acc[e.kind]) acc[e.kind] = 0;
       acc[e.kind]++;
@@ -39,7 +53,10 @@
     <h1 class="text-3xl font-bold mb-6">Эволюция Dashboard</h1>
 
     {#if !$activeClient}
-      <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6" role="alert">
+      <div
+        class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6"
+        role="alert"
+      >
         <p class="font-bold">Сервер не выбран</p>
         <p>Выберите сервер Home Assistant в списке выше, чтобы увидеть устройства.</p>
       </div>
@@ -48,7 +65,7 @@
         <p class="font-bold">Ошибка подключения</p>
         <p>{status.message || 'Не удалось подключиться к серверу.'}</p>
       </div>
-    {:else if isLoading && $uiEntities.length === 0}
+    {:else if isLoading && allEntities.length === 0}
       <div class="flex flex-col items-center justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
         <p class="text-gray-500">Загрузка устройств...</p>
@@ -63,8 +80,9 @@
           class:bg-gray-200={filterKind !== null}
           on:click={() => (filterKind = null)}
         >
-          Все ({$uiEntities.length})
+          Все ({allEntities.length})
         </button>
+
         {#each Object.entries(kindGroups) as [kind, count]}
           <button
             class="px-4 py-2 rounded capitalize"
@@ -81,7 +99,7 @@
       {#if filteredEntities.length === 0}
         <p class="text-gray-500 text-center py-8">Нет устройств этого типа.</p>
       {:else}
-        <!-- Грид карток -->
+        <!-- Грид карточек -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {#each filteredEntities as entity (entity.id)}
             <UiEntityCard {entity}>
