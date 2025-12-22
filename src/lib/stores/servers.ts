@@ -35,6 +35,9 @@ export const servers = writable<HAServerConfig[]>([]);
 // Active server ID
 export const activeServerId = writable<string | null>(null);
 
+// Active server ID storage key
+const ACTIVE_SERVER_STORAGE_KEY = 'active_server_id';
+
 // Connection status store
 export const serverConnectionStatus = writable<Record<string, ConnectionStatus>>({});
 
@@ -230,6 +233,34 @@ export function saveServersToStorage(serversData: HAServerConfig[]): void {
   }
 }
 
+/**
+ * Сохраняет активный сервер ID в localStorage
+ */
+export function saveActiveServerIdToStorage(serverId: string | null): void {
+  try {
+    if (serverId) {
+      localStorage.setItem(ACTIVE_SERVER_STORAGE_KEY, serverId);
+    } else {
+      localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
+    }
+  } catch (error) {
+    console.error('[Servers] Ошибка при сохранении активного сервера:', error);
+  }
+}
+
+/**
+ * Загружает активный сервер ID из localStorage
+ */
+export function loadActiveServerIdFromStorage(): string | null {
+  try {
+    const stored = localStorage.getItem(ACTIVE_SERVER_STORAGE_KEY);
+    return stored || null;
+  } catch (error) {
+    console.error('[Servers] Ошибка при загрузке активного сервера:', error);
+    return null;
+  }
+}
+
 // ========================================
 // SERVER CRUD OPERATIONS
 // ========================================
@@ -334,9 +365,15 @@ export const activeClient = derived(
 // ========================================
 
 /**
- * Инициализация: загружаем серверы при старте
+ * Инициализация: загружаем серверы и активный сервер при старте
  */
 if (typeof window !== 'undefined') {
   const loadedServers = loadServersFromStorage();
   servers.set(loadedServers);
+
+  // Восстанавливаем активный сервер ID
+  const loadedActiveServerId = loadActiveServerIdFromStorage();
+  if (loadedActiveServerId) {
+    activeServerId.set(loadedActiveServerId);
+  }
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { servers, activeServerId, serverConnectionStatus } from '../lib/stores/servers';
+  import { servers, activeServerId, serverConnectionStatus, saveActiveServerIdToStorage } from '../lib/stores/servers';
   import type { HAServerConfig } from '../lib/types/ha';
 
   let newServerUrl = '';
@@ -8,6 +8,7 @@
 
   function selectServer(id: string) {
     activeServerId.set(id);
+    saveActiveServerIdToStorage(id);
   }
 
   function addServer() {
@@ -34,7 +35,11 @@
 
   function removeServer(id: string) {
     servers.update((list) => list.filter((s) => s.id !== id));
-    activeServerId.update((current) => (current === id ? null : current));
+    activeServerId.update((current) => {
+      const newValue = current === id ? null : current;
+      saveActiveServerIdToStorage(newValue);
+      return newValue;
+    });
   }
 </script>
 
