@@ -73,7 +73,6 @@ const persistedActiveServerId = createPersistedStore<string | null>('fusion-ha-c
 // STORES
 // ========================================
 
-// Server configurations store
 export const servers = writable<HAServerConfig[]>([]);
 
 // Active server ID
