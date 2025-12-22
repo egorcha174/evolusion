@@ -7,19 +7,16 @@
   import SensorCard from '../components/cards/SensorCard.svelte';
   import ButtonCard from '../components/cards/ButtonCard.svelte';
 
-  import { activeClient, serverConnectionStatus } from '../lib/stores/servers';
+  import { activeClient, activeServerId, serverConnectionStatus } from '../lib/stores/servers';
   import { uiEntities } from '../lib/stores/entities';
   import { loadingStore } from '../lib/stores/loading';
 
   let filterKind: string | null = null;
 
-  // Активный сервер
-  $: activeServerId = $activeClient?.config?.id;
-
   // Статус подключения (или null)
   $: status =
-    activeServerId && $serverConnectionStatus
-      ? $serverConnectionStatus[activeServerId] ?? null
+    $activeServerId && $serverConnectionStatus
+      ? $serverConnectionStatus[$activeServerId] ?? null
       : null;
 
   // Безопасное чтение флага загрузки сущностей

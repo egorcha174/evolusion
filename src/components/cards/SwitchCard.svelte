@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { UiEntity } from '../../../lib/models';
+  import type { UiEntity } from '$lib/models';
   import { activeClient } from '$lib/stores/servers';
 
   export let entity: UiEntity;

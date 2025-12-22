@@ -1,10 +1,11 @@
+import type { UiEntity } from '../models';
 import { derived } from 'svelte/store';
 import { activeClient } from './servers';
 import { mapHaStateToUiEntity } from '../models';
 
 export const uiEntities = derived(activeClient, ($client, set) => {
   if (!$client) {
-    set([]);
+    set([] as UiEntity[]);
     return;
   }
 
@@ -15,4 +16,4 @@ export const uiEntities = derived(activeClient, ($client, set) => {
   return () => {
     unsubscribe();
   };
-}, []);
+}, [] as UiEntity[]);
