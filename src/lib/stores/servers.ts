@@ -1,5 +1,4 @@
 import { writable, get, derived } from 'svelte/store';
-import { $state, $effect } from 'svelte/internal';
 import type { HAServerConfig } from '../types/ha';
 import { HAClient } from '../api/ha-client';
 import { encryptToken, decryptToken, encryptServerConfig, decryptServerConfig } from '$utils/crypto';
@@ -31,31 +30,30 @@ export type ConnectionStatus = {
 // ========================================
 
 /**
- * Создает persisted-store для Svelte 5 runes
+ * Создает persisted-store для Svelte
  * Автоматически синхронизирует состояние с localStorage
  */
 function createPersistedStore<T>(key: string, initial: T) {
-  if (typeof window === 'undefined') {
-    // На сервере просто возвращаем in-memory состояние
-    let state = $state(initial);
-    return {
-      get value() { return state; },
-      set value(newValue: T) { state = newValue; }
-    };
+  // Используем традиционный writable store вместо runes
+  const { subscribe, set, update } = writable<T>(initial);
+
+  if (typeof window !== 'undefined') {
+    // Читаем из localStorage при инициализации
+    const saved = window.localStorage.getItem(key);
+    if (saved) {
+      set(JSON.parse(saved));
+    }
+
+    // Подписываемся на изменения и сохраняем в localStorage
+    subscribe(value => {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    });
   }
 
-  // Читаем из localStorage при инициализации
-  const saved = window.localStorage.getItem(key);
-  let state = $state(saved ? JSON.parse(saved) : initial);
-
-  // Автоматически сохраняем в localStorage при изменении состояния
-  $effect(() => {
-    window.localStorage.setItem(key, JSON.stringify(state));
-  });
-
   return {
-    get value() { return state; },
-    set value(newValue: T) { state = newValue; }
+    subscribe,
+    set,
+    update
   };
 }
 
@@ -416,20 +414,21 @@ export const activeClient = derived(
  * и синхронизируем с persisted stores
  */
 if (typeof window !== 'undefined') {
-  // Загружаем из persisted stores
-  const loadedServers = persistedServers.value;
-  const loadedActiveServerId = persistedActiveServerId.value;
+  // Подписываемся на persisted stores и синхронизируем с writable stores
+  persistedServers.subscribe((value) => {
+    servers.set(value || []);
+  });
 
-  // Инициализируем writable stores
-  servers.set(loadedServers || []);
-  activeServerId.set(loadedActiveServerId || null);
+  persistedActiveServerId.subscribe((value) => {
+    activeServerId.set(value || null);
+  });
 
   // Подписываемся на изменения writable stores и синхронизируем с persisted stores
   servers.subscribe((value) => {
-    persistedServers.value = value;
+    persistedServers.set(value);
   });
 
   activeServerId.subscribe((value) => {
-    persistedActiveServerId.value = value;
+    persistedActiveServerId.set(value);
   });
 }
