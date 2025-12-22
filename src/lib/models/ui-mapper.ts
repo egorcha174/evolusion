@@ -9,7 +9,7 @@ import { computeActions } from './entity-actions';
 export function mapHaStateToUiEntity(state: HaState): UiEntity {
   const domain = getDomain(state.entity_id);
   const kind = computeKind(domain, state.attributes);
-  const actions = computeActions(kind, state.attributes);
+  const actions = computeActions(state);
 
   const baseEntity: UiEntity = {
     id: state.entity_id,
@@ -19,7 +19,10 @@ export function mapHaStateToUiEntity(state: HaState): UiEntity {
     state: state.state,
     value: extractValue(state),
     actions,
-    isUnavailable: state.state === 'unavailable'
+    supportsToggle: actions.some(a => a.id === 'toggle'),
+    supportsDetails: ['climate', 'media', 'vacuum'].includes(domain),
+    isUnavailable: state.state === 'unavailable',
+    attributes: state.attributes
   };
 
   // Добавляем light-specific параметры

@@ -2,9 +2,12 @@
 // Определение типов сущностей и их характеристик
 
 
-export type UiEntityKind = 'sensor' | 'switch' | 'light' | 'button';
+export type UiEntityKind = 'sensor' | 'switch' | 'light' | 'button' | 'climate' | 'media' | 'vacuum';
 
 export function getDomain(entityId: string): string {
+  if (!entityId || typeof entityId !== 'string') {
+    return '';
+  }
   return entityId.split('.')[0] ?? '';
 }
 
