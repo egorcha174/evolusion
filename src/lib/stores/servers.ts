@@ -461,16 +461,15 @@ export const activeClient = derived(
  * и синхронизируем с persisted stores
  */
 if (typeof window !== 'undefined') {
-  // Подписываемся на persisted stores и синхронизируем с writable stores
-  persistedServers.subscribe((value) => {
-    servers.set(value || []);
-  });
+  // Загружаем начальные данные из persisted stores
+  const initialServers = get(persistedServers) || [];
+  servers.set(initialServers);
 
-  persistedActiveServerId.subscribe((value) => {
-    activeServerId.set(value || null);
-  });
+  const initialActiveServerId = get(persistedActiveServerId) || null;
+  activeServerId.set(initialActiveServerId);
 
   // Подписываемся на изменения writable stores и синхронизируем с persisted stores
+  // Без обратной синхронизации, чтобы избежать циклических зависимостей
   servers.subscribe((value) => {
     persistedServers.set(value);
   });

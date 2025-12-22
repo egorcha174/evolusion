@@ -1,0 +1,38 @@
+﻿{
+  "model": {
+    "provider": "ollama",
+    "model": "deepseek-r1",
+    "context_length": 4096,
+    "temperature": 0.1
+  },
+  "system_prompt_path": ".local/prompts/cline-system.md",
+  "sandbox": {
+    "enabled": true,
+    "root": "./",
+    "allow": ["read", "write", "modify", "create", "delete"]
+  },
+  "tasks": {
+    "max_steps": 6,
+    "ask_before_file_creation": true,
+    "ask_before_file_overwrite": true,
+    "ask_before_deleting_files": true
+  },
+  "limits": {
+    "max_file_size_kb": 200,
+    "max_generated_file_size_kb": 200,
+    "max_diff_size_kb": 150
+  },
+  "project": {
+    "architecture_docs": [
+      ".local/context/architecture.md",
+      ".local/context/plugin-spec.md",
+      ".local/context/coding-style.md"
+    ],
+    "ignore_paths": [
+      "node_modules/",
+      "dist/",
+      "build/",
+      ".local/"
+    ]
+  }
+}

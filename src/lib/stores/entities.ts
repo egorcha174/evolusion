@@ -9,11 +9,26 @@ export const uiEntities = derived(activeClient, ($client, set) => {
     return;
   }
 
+  // Проверяем, есть ли у клиента метод entities.subscribe
+  if (typeof $client.entities?.subscribe !== 'function') {
+    set([] as UiEntity[]);
+    return;
+  }
+
   const unsubscribe = $client.entities.subscribe((rawEntities) => {
-    set(rawEntities.map(mapHaStateToUiEntity));
+    try {
+      set(rawEntities.map(mapHaStateToUiEntity));
+    } catch (error) {
+      console.error('[uiEntities] Error mapping entities:', error);
+      set([] as UiEntity[]);
+    }
   });
 
   return () => {
-    unsubscribe();
+    try {
+      unsubscribe();
+    } catch (error) {
+      console.error('[uiEntities] Error unsubscribing:', error);
+    }
   };
 }, [] as UiEntity[]);
