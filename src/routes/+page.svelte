@@ -1,3 +1,4 @@
+
 <script lang="ts">
   import ServerList from '../components/ServerList.svelte';
   import UiEntityCard from '../components/UiEntityCard.svelte';
@@ -21,7 +22,7 @@
       ? $serverConnectionStatus[activeServerId] ?? null
       : null;
 
-  // Безопасное чтение флага загрузки
+  // Безопасное чтение флага загрузки сущностей
   $: entitiesLoading =
     ($loadingStore && ($loadingStore.entities ?? $loadingStore['entities'])) === true;
 
