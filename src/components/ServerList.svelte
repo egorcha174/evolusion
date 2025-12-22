@@ -253,9 +253,10 @@
   }
 </style>
 <task_progress>
-- [x] Analyze current server store implementation
-- [x] Check how connections are currently stored
-- [x] Implement persisted store for servers
-- [x] Implement persisted store for current connection
-- [x] Update the code to use new persisted stores
-- [x] Test the implementation
+- [x] Проанализировать структуру проекта
+- [x] Найти код, связанный с серверными запросами
+- [x] Проанализировать возможные причины ошибки 500
+- [x] Предложить решение
+- [x] Исправить дополнительные ошибки
+</task_progress>
+</write_to_file>
