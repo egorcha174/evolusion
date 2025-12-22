@@ -1,7 +1,7 @@
 import { writable, get, derived } from 'svelte/store';
 import type { HAServerConfig } from '../types/ha';
 import { HAClient } from '../api/ha-client';
-import { encryptToken, decryptToken } from '$utils/crypto';
+import { encryptToken, decryptToken, encryptServerConfig, decryptServerConfig } from '$utils/crypto';
 import { CONFIG, MESSAGES } from '$constants/config';
 import { notifications } from './notifications';
 import { isLoading } from './loading';
@@ -16,7 +16,7 @@ const HAServerConfigSchema = z.object({
   id: z.string().min(1, 'ID обязателен'),
   name: z.string().min(1, 'Имя обязательно').max(100, 'Имя слишком длинное'),
   url: z.string().url('Неверный формат URL'),
-  accessToken: z.string().min(10, 'Токен слишком короткий'),
+  token: z.string().min(10, 'Токен слишком короткий'),
   enabled: z.boolean().default(true)
 });
 
@@ -71,11 +71,32 @@ function showNotification(
  */
 function validateAndDecryptServer(server: any): HAServerConfig | null {
   try {
-    const decrypted = {
-      ...server,
-      accessToken: decryptToken(server.accessToken)
-    };
-    return HAServerConfigSchema.parse(decrypted);
+    // Пробуем расшифровать как полную конфигурацию (новый формат)
+    // Если это строка - значит это зашифрованная конфигурация
+    if (typeof server === 'string') {
+      const decrypted = decryptServerConfig(server);
+      return HAServerConfigSchema.parse(decrypted);
+    }
+    // Если это объект с зашифрованным токеном - старый формат
+    else if (server && typeof server.token === 'string' && server.token) {
+      const decrypted = {
+        ...server,
+        token: decryptToken(server.token)
+      };
+      return HAServerConfigSchema.parse(decrypted);
+    }
+    // Если это объект с зашифрованным accessToken - старый формат (для обратной совместимости)
+    else if (server && typeof server.accessToken === 'string' && server.accessToken) {
+      const decrypted = {
+        ...server,
+        token: decryptToken(server.accessToken)
+      };
+      return HAServerConfigSchema.parse(decrypted);
+    }
+    // Если это уже расшифрованный объект
+    else {
+      return HAServerConfigSchema.parse(server);
+    }
   } catch (error) {
     console.error('[Servers] Ошибка валидации сервера:', error);
     return null;
@@ -83,13 +104,10 @@ function validateAndDecryptServer(server: any): HAServerConfig | null {
 }
 
 /**
- * Шифрует accessToken в конфигурации сервера
+ * Шифрует всю конфигурацию сервера
  */
-function encryptServer(server: HAServerConfig): any {
-  return {
-    ...server,
-    accessToken: encryptToken(server.accessToken)
-  };
+function encryptServer(server: HAServerConfig): string {
+  return encryptServerConfig(server);
 }
 
 // ========================================
@@ -265,7 +283,7 @@ export function removeServer(serverId: string): void {
   
   // Удаляем сервер из списка
   servers.update(s => {
-    const updated = s.filter(server => server.id !== serverId);
+    const updated = s.filter((server: HAServerConfig) => server.id !== serverId);
     saveServersToStorage(updated);
     return updated;
   });

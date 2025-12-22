@@ -51,6 +51,38 @@ export function decryptToken(encryptedToken: string): string {
 }
 
 /**
+ * Encrypts an entire server configuration object
+ * @param data - The server configuration object to encrypt
+ * @returns Encrypted and base64-encoded JSON string
+ */
+export function encryptServerConfig(data: any): string {
+  try {
+    const jsonString = JSON.stringify(data);
+    const xored = xorCipher(jsonString, ENCRYPTION_KEY);
+    return btoa(xored);
+  } catch (error) {
+    console.error('[Crypto] Server config encryption error:', error);
+    throw new Error('Не удалось зашифровать конфигурацию сервера');
+  }
+}
+
+/**
+ * Decrypts an encrypted server configuration
+ * @param encryptedData - The encrypted server configuration string
+ * @returns Decrypted server configuration object
+ */
+export function decryptServerConfig(encryptedData: string): any {
+  try {
+    const decoded = atob(encryptedData);
+    const xored = xorCipher(decoded, ENCRYPTION_KEY);
+    return JSON.parse(xored);
+  } catch (error) {
+    console.error('[Crypto] Server config decryption error:', error);
+    throw new Error('Не удалось расшифровать конфигурацию сервера');
+  }
+}
+
+/**
  * Generates a random UUID v4
  * @returns Random UUID string
  */
