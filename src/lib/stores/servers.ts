@@ -32,21 +32,41 @@ export type ConnectionStatus = {
 /**
  * Создает persisted-store для Svelte
  * Автоматически синхронизирует состояние с localStorage
+ * Безопасная реализация с обработкой ошибок и логированием
  */
 function createPersistedStore<T>(key: string, initial: T) {
   // Используем традиционный writable store вместо runes
   const { subscribe, set, update } = writable<T>(initial);
 
   if (typeof window !== 'undefined') {
-    // Читаем из localStorage при инициализации
-    const saved = window.localStorage.getItem(key);
-    if (saved) {
-      set(JSON.parse(saved));
+    // Читаем из localStorage при инициализации с обработкой ошибок
+    try {
+      const saved = window.localStorage.getItem(key);
+      if (saved != null) {
+        try {
+          const parsed = JSON.parse(saved);
+          console.log('[PersistedStore] init', key, parsed);
+          set(parsed);
+        } catch (e) {
+          console.error('[PersistedStore] invalid data for', key, e);
+          // Если данные битые — очищаем
+          window.localStorage.removeItem(key);
+          set(initial);
+        }
+      }
+    } catch (e) {
+      console.error('[PersistedStore] error reading from localStorage for', key, e);
+      set(initial);
     }
 
-    // Подписываемся на изменения и сохраняем в localStorage
+    // Подписываемся на изменения и сохраняем в localStorage с обработкой ошибок
     subscribe(value => {
-      window.localStorage.setItem(key, JSON.stringify(value));
+      try {
+        console.log('[PersistedStore] update', key, value);
+        window.localStorage.setItem(key, JSON.stringify(value));
+      } catch (e) {
+        console.error('[PersistedStore] save error for', key, e);
+      }
     });
   }
 

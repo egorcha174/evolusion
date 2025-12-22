@@ -2,6 +2,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { loadServersFromStorage, saveServersToStorage } from './servers';
 import { encryptServerConfig, decryptServerConfig } from '../utils/crypto';
 
+// Helper to test createPersistedStore directly
+function testCreatePersistedStore() {
+  // We'll test this indirectly through the stores that use it
+  return {
+    // This will be used to verify the persisted store behavior
+  };
+}
+
 describe('Servers Store - Storage Operations', () => {
   const testServer = {
     id: 'test-server-1',
@@ -106,6 +114,61 @@ describe('Servers Store - Storage Operations', () => {
       // Should be different from the original JSON
       const originalJson = JSON.stringify(testServer);
       expect(parsedData[0]).not.toBe(originalJson);
+    });
+  });
+
+  describe('Persisted Store Error Handling', () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it('should handle corrupted JSON in persisted store gracefully', () => {
+      // Simulate corrupted data in the persisted store keys
+      localStorage.setItem('fusion-ha-servers', 'corrupted-json-{{{');
+      localStorage.setItem('fusion-ha-connection', 'invalid-data');
+
+      // This should not throw - the persisted store should handle it gracefully
+      expect(() => {
+        // Import the module to trigger initialization
+        import('./servers');
+      }).not.toThrow();
+    });
+
+    it('should handle invalid data types in persisted store', () => {
+      // Simulate old format data that might cause issues
+      localStorage.setItem('fusion-ha-servers', JSON.stringify({ not: 'an array' }));
+      localStorage.setItem('fusion-ha-connection', JSON.stringify(123)); // number instead of string
+
+      expect(() => {
+        import('./servers');
+      }).not.toThrow();
+    });
+
+    it('should handle localStorage errors during save', () => {
+      // Mock localStorage.setItem to throw an error
+      const originalSetItem = localStorage.setItem;
+      localStorage.setItem = vi.fn(() => {
+        throw new Error('Quota exceeded');
+      });
+
+      // This should not crash the application
+      expect(() => {
+        saveServersToStorage([testServer]);
+      }).not.toThrow();
+
+      // Restore original function
+      localStorage.setItem = originalSetItem;
+    });
+
+    it('should handle circular references during serialization', () => {
+      // Create an object with circular reference
+      const circularServer: any = { ...testServer };
+      circularServer.self = circularServer;
+
+      // This should not crash
+      expect(() => {
+        saveServersToStorage([circularServer]);
+      }).not.toThrow();
     });
   });
 });

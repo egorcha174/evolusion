@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Persisted Store Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-case {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        button {
+            padding: 8px 15px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Persisted Store Error Handling Test</h1>
+    <p>This page tests the fixed createPersistedStore function with various error scenarios.</p>
+
+    <div class="test-case">
+        <h2>Test 1: Corrupted JSON Data</h2>
+        <button onclick="testCorruptedJSON()">Run Test</button>
+        <div id="test1-result"></div>
+    </div>
+
+    <div class="test-case">
+        <h2>Test 2: Invalid Data Types</h2>
+        <button onclick="testInvalidDataTypes()">Run Test</button>
+        <div id="test2-result"></div>
+    </div>
+
+    <div class="test-case">
+        <h2>Test 3: Circular References</h2>
+        <button onclick="testCircularReferences()">Run Test</button>
+        <div id="test3-result"></div>
+    </div>
+
+    <div class="test-case">
+        <h2>Test 4: Normal Operation</h2>
+        <button onclick="testNormalOperation()">Run Test</button>
+        <div id="test4-result"></div>
+    </div>
+
+    <div class="test-case">
+        <h2>Current localStorage Contents</h2>
+        <button onclick="showLocalStorage()">Show localStorage</button>
+        <textarea id="localStorage-contents" readonly></textarea>
+        <button onclick="clearLocalStorage()">Clear localStorage</button>
+    </div>
+
+    <script>
+        // Simulate the fixed createPersistedStore function
+        function createPersistedStore(key, initial) {
+            let state = initial;
+
+            // Initialize from localStorage with error handling
+            try {
+                const saved = localStorage.getItem(key);
+                if (saved != null) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        console.log('[PersistedStore] init', key, parsed);
+                        state = parsed;
+                    } catch (e) {
+                        console.error('[PersistedStore] invalid data for', key, e);
+                        // If data is corrupted - clear it
+                        localStorage.removeItem(key);
+                        state = initial;
+                    }
+                }
+            } catch (e) {
+                console.error('[PersistedStore] error reading from localStorage for', key, e);
+                state = initial;
+            }
+
+            // Save to localStorage with error handling
+            function save(newState) {
+                state = newState;
+                try {
+                    console.log('[PersistedStore] update', key, state);
+                    localStorage.setItem(key, JSON.stringify(state));
+                    return true;
+                } catch (e) {
+                    console.error('[PersistedStore] save error for', key, e);
+                    return false;
+                }
+            }
+
+            return {
+                get: () => state,
+                set: save
+            };
+        }
+
+        function testCorruptedJSON() {
+            const resultDiv = document.getElementById('test1-result');
+            resultDiv.innerHTML = 'Running test...';
+
+            try {
+                // Set corrupted data
+                localStorage.setItem('test-corrupted', 'corrupted-json-{{{');
+
+                // Try to create persisted store
+                const store = createPersistedStore('test-corrupted', [1, 2, 3]);
+
+                // Check if it recovered gracefully
+                const value = store.get();
+                if (Array.isArray(value) && value.length === 3) {
+                    resultDiv.innerHTML = '<strong class="success">✅ SUCCESS:</strong> Store recovered from corrupted data with initial value: ' + JSON.stringify(value);
+                } else {
+                    resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Store did not recover properly: ' + JSON.stringify(value);
+                }
+            } catch (e) {
+                resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Exception thrown: ' + e.message;
+            }
+        }
+
+        function testInvalidDataTypes() {
+            const resultDiv = document.getElementById('test2-result');
+            resultDiv.innerHTML = 'Running test...';
+
+            try {
+                // Set invalid data type (number instead of array)
+                localStorage.setItem('test-invalid', JSON.stringify(123));
+
+                // Try to create persisted store expecting array
+                const store = createPersistedStore('test-invalid', ['a', 'b', 'c']);
+
+                // Check if it recovered gracefully
+                const value = store.get();
+                if (Array.isArray(value) && value.length === 3) {
+                    resultDiv.innerHTML = '<strong class="success">✅ SUCCESS:</strong> Store recovered from invalid data type with initial value: ' + JSON.stringify(value);
+                } else {
+                    resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Store did not recover properly: ' + JSON.stringify(value);
+                }
+            } catch (e) {
+                resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Exception thrown: ' + e.message;
+            }
+        }
+
+        function testCircularReferences() {
+            const resultDiv = document.getElementById('test3-result');
+            resultDiv.innerHTML = 'Running test...';
+
+            try {
+                // Create store
+                const store = createPersistedStore('test-circular', { data: 'initial' });
+
+                // Try to save circular reference
+                const circularObj = { name: 'test' };
+                circularObj.self = circularObj;
+
+                const success = store.set(circularObj);
+
+                if (!success) {
+                    resultDiv.innerHTML = '<strong class="success">✅ SUCCESS:</strong> Circular reference was handled gracefully (save failed as expected)';
+                } else {
+                    resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Circular reference was saved (this should not happen)';
+                }
+            } catch (e) {
+                resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Exception thrown: ' + e.message;
+            }
+        }
+
+        function testNormalOperation() {
+            const resultDiv = document.getElementById('test4-result');
+            resultDiv.innerHTML = 'Running test...';
+
+            try {
+                // Create store
+                const store = createPersistedStore('test-normal', { count: 0 });
+
+                // Set value
+                const success1 = store.set({ count: 1 });
+
+                // Get value
+                const value = store.get();
+
+                // Set another value
+                const success2 = store.set({ count: 2 });
+
+                if (success1 && success2 && value.count === 1) {
+                    resultDiv.innerHTML = '<strong class="success">✅ SUCCESS:</strong> Normal operation works correctly';
+                } else {
+                    resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Normal operation failed';
+                }
+            } catch (e) {
+                resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Exception thrown: ' + e.message;
+            }
+        }
+
+        function showLocalStorage() {
+            const textarea = document.getElementById('localStorage-contents');
+            textarea.value = '';
+
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                textarea.value += `${key}: ${value}\n`;
+            }
+        }
+
+        function clearLocalStorage() {
+            localStorage.clear();
+            document.getElementById('localStorage-contents').value = 'localStorage cleared';
+        }
+    </script>
+</body>
+</html>
