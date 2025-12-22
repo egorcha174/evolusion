@@ -73,37 +73,41 @@
     <ul class="list">
       {#each $servers as server}
         {#key server.id}
-          <li
-            class:selected={server.id === $activeServerId}
-            class="item"
-            on:click={() => selectServer(server.id)}
-          >
-            <div class="item-main">
-              <div class="name">{server.name}</div>
-              <div class="url">{server.url}</div>
-            </div>
+          <li class="item">
+            <button
+              class:selected={server.id === $activeServerId}
+              class="item-button"
+              on:click={() => selectServer(server.id)}
+              on:keydown={(e) => e.key === 'Enter' || e.key === ' ' ? selectServer(server.id) : null}
+              type="button"
+            >
+              <div class="item-main">
+                <div class="name">{server.name}</div>
+                <div class="url">{server.url}</div>
+              </div>
 
-            <div class="item-meta">
-              {#if $serverConnectionStatus[server.id]?.status === 'pending'}
-                <span class="status pending">Подключение...</span>
-              {:else if $serverConnectionStatus[server.id]?.status === 'ok'}
-                <span class="status ok">Онлайн</span>
-              {:else if $serverConnectionStatus[server.id]?.status === 'error'}
-                <span class="status error">
-                  Ошибка: {$serverConnectionStatus[server.id]?.message || 'подключение не удалось'}
-                </span>
-              {:else}
-                <span class="status unknown">Неизвестно</span>
-              {/if}
+              <div class="item-meta">
+                {#if $serverConnectionStatus[server.id]?.status === 'pending'}
+                  <span class="status pending">Подключение...</span>
+                {:else if $serverConnectionStatus[server.id]?.status === 'ok'}
+                  <span class="status ok">Онлайн</span>
+                {:else if $serverConnectionStatus[server.id]?.status === 'error'}
+                  <span class="status error">
+                    Ошибка: {$serverConnectionStatus[server.id]?.message || 'подключение не удалось'}
+                  </span>
+                {:else}
+                  <span class="status unknown">Неизвестно</span>
+                {/if}
+              </div>
+            </button>
 
-              <button
-                class="button danger small"
-                type="button"
-                on:click|stopPropagation={() => removeServer(server.id)}
-              >
-                Удалить
-              </button>
-            </div>
+            <button
+              class="button danger small"
+              type="button"
+              on:click|stopPropagation={() => removeServer(server.id)}
+            >
+              Удалить
+            </button>
           </li>
         {/key}
       {/each}
@@ -177,11 +181,29 @@
     padding: 0.6rem 0;
     border-bottom: 1px solid #e5e7eb;
     align-items: center;
+    width: 100%;
+  }
+
+  .item-button {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: center;
+    background: none;
+    border: none;
+    padding: 0;
+    width: 100%;
+    text-align: left;
     cursor: pointer;
   }
 
-  .item.selected {
+  .item-button.selected {
     background: #e0ecff;
+  }
+
+  .item-button:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
   }
 
   .item-main {
@@ -252,4 +274,3 @@
     }
   }
 </style>
-
