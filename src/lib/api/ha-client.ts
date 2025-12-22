@@ -82,22 +82,30 @@ export class HAClient {
     resolve: () => void,
     reject: (error: any) => void
   ) {
-    if (message.type === 'auth_required') {
-      this.authenticate();
-    } else if (message.type === 'auth_ok') {
-      this.connectionStatus.update(s => ({ ...s, connected: true }));
-      this.subscribeToStates();
-      resolve();
-    } else if (message.type === 'auth_invalid') {
-      reject(new Error('Authentication failed'));
-    } else if (message.type === 'result' && message.id) {
-      const callback = this.pendingRequests.get(message.id);
-      if (callback) {
-        callback(message);
-        this.pendingRequests.delete(message.id);
+    try {
+      if (message.type === 'auth_required') {
+        this.authenticate();
+      } else if (message.type === 'auth_ok') {
+        this.connectionStatus.update(s => ({ ...s, connected: true }));
+        this.subscribeToStates();
+        resolve();
+      } else if (message.type === 'auth_invalid') {
+        reject(new Error('Authentication failed'));
+      } else if (message.type === 'result' && message.id) {
+        const callback = this.pendingRequests.get(message.id);
+        if (callback) {
+          callback(message);
+          this.pendingRequests.delete(message.id);
+        }
+      } else if (message.type === 'event') {
+        this.handleEvent(message);
+      } else {
+        console.warn('Unknown message type:', message.type, message);
+        // Для неизвестных типов сообщений не отвергаем promise, но логируем
       }
-    } else if (message.type === 'event') {
-      this.handleEvent(message);
+    } catch (error) {
+      console.error('Error handling message:', error);
+      reject(error);
     }
   }
 
@@ -112,6 +120,13 @@ export class HAClient {
     this.sendWithResponse({
       type: 'subscribe_events',
       event_type: 'state_changed'
+    }).catch((error) => {
+      console.error('Failed to subscribe to events:', error);
+      this.connectionStatus.update(s => ({
+        ...s,
+        connected: false,
+        error: 'Failed to subscribe to events'
+      }));
     });
 
     this.sendWithResponse({
@@ -120,6 +135,13 @@ export class HAClient {
       if (response.success && response.result) {
         this.entities.set(response.result);
       }
+    }).catch((error) => {
+      console.error('Failed to get states:', error);
+      this.connectionStatus.update(s => ({
+        ...s,
+        connected: false,
+        error: 'Failed to get states'
+      }));
     });
   }
 
@@ -145,9 +167,22 @@ export class HAClient {
   }
 
   private sendWithResponse(message: any): Promise<any> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const id = this.messageId++;
-      this.pendingRequests.set(id, resolve);
+      const timeoutId = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error('Request timeout'));
+      }, 10000); // 10 секунд таймаут
+
+      this.pendingRequests.set(id, (response) => {
+        clearTimeout(timeoutId);
+        if (response.success === false) {
+          reject(new Error(response.error || 'Request failed'));
+        } else {
+          resolve(response);
+        }
+      });
+
       this.send({ ...message, id });
     });
   }
