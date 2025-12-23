@@ -4,7 +4,7 @@
  * Implements XChaCha20-Poly1305 AEAD cipher
  */
 
-import { xchacha20poly1305 } from '@noble/ciphers/chacha';
+import { xchacha20poly1305 } from '@noble/ciphers';
 
 // ========================================
 // ENCRYPTION KEY MANAGEMENT
@@ -44,19 +44,19 @@ function encryptWithXChaCha20(plaintext: string): string {
   try {
     const encoder = new TextEncoder();
     const data = encoder.encode(plaintext);
-    
+
     // Generate random 24-byte nonce for XChaCha20
-    const nonce = randomBytes(24);
-    
+    const nonce = crypto.getRandomValues(new Uint8Array(24));
+
     // Create cipher and encrypt
     const cipher = xchacha20poly1305(ENCRYPTION_KEY, nonce);
-            const nonce = crypto.getRandomValues(new Uint8Array(24));
-    
+    const encrypted = cipher.encrypt(data);
+
     // Combine nonce + encrypted data
     const combined = new Uint8Array(nonce.length + encrypted.length);
     combined.set(nonce, 0);
     combined.set(encrypted, nonce.length);
-    
+
     // Convert to base64
     return btoa(String.fromCharCode(...combined));
   } catch (error) {

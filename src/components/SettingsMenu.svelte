@@ -16,6 +16,12 @@
     onSidebarToggle();
     closeMenu();
   }
+
+  function handleKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      closeMenu();
+    }
+  }
 </script>
 
 <div class="settings-menu-container">
@@ -25,7 +31,7 @@
 
   {#if showMenu}
     <div class="settings-dropdown" on:click|stopPropagation={closeMenu}>
-      <div class="settings-dropdown-content" on:click|stopPropagation>
+        <div class="settings-dropdown-content" on:click|stopPropagation on:keydown={handleKeyDown} role="menu" tabindex="0">
         <a href="/servers" class="settings-item">
           <span class="settings-item-icon">🖥️</span>
           <span class="settings-item-text">Серверы Home Assistant</span>
@@ -42,10 +48,10 @@
 
         <div class="settings-divider"></div>
 
-        <a href="#" class="settings-item">
+        <button class="settings-item" on:click={() => closeMenu()}>
           <span class="settings-item-icon">⚙️</span>
           <span class="settings-item-text">Настройки дашборда</span>
-        </a>
+        </button>
       </div>
     </div>
   {/if}
