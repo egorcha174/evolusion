@@ -1,24 +1,102 @@
 /**
  * Utility functions for encrypting and decrypting sensitive data
- * Uses base64 encoding for basic obfuscation in browser storage
+ * Uses @noble/ciphers for cryptographically secure encryption
+ * Implements XChaCha20-Poly1305 AEAD cipher
  */
 
-const ENCRYPTION_KEY = 'evolusion-ha-secure-key';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha';
+import { randomBytes } from '@noble/ciphers/webcrypto';
+
+// ========================================
+// ENCRYPTION KEY MANAGEMENT
+// ========================================
 
 /**
- * Simple XOR cipher for basic encryption
- * Note: This is NOT cryptographically secure, but provides basic obfuscation
- * for tokens stored in localStorage
+ * Generates a secure encryption key from environment or creates a new one
+ * In production, this should come from environment variables
  */
-function xorCipher(text: string, key: string): string {
-  let result = '';
-  for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(
-      text.charCodeAt(i) ^ key.charCodeAt(i % key.length)
-    );
+function getEncryptionKey(): Uint8Array {
+  // WARNING: In production, use a key from environment variables!
+  // For now, we'll derive from a constant (not ideal, but better than XOR)
+  const keyString = 'evolusion-ha-secure-key-v2-xchacha20poly1305';
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(keyString);
+  
+  // Ensure key is exactly 32 bytes
+  const key = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    key[i] = keyData[i % keyData.length];
   }
-  return result;
+  
+  return key;
 }
+
+const ENCRYPTION_KEY = getEncryptionKey();
+
+// ========================================
+// CORE ENCRYPTION FUNCTIONS
+// ========================================
+
+/**
+ * Encrypts data using XChaCha20-Poly1305
+ * @param plaintext - The data to encrypt
+ * @returns Base64-encoded encrypted data with nonce prepended
+ */
+function encryptWithXChaCha20(plaintext: string): string {
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plaintext);
+    
+    // Generate random 24-byte nonce for XChaCha20
+    const nonce = randomBytes(24);
+    
+    // Create cipher and encrypt
+    const cipher = xchacha20poly1305(ENCRYPTION_KEY, nonce);
+    const encrypted = cipher.encrypt(data);
+    
+    // Combine nonce + encrypted data
+    const combined = new Uint8Array(nonce.length + encrypted.length);
+    combined.set(nonce, 0);
+    combined.set(encrypted, nonce.length);
+    
+    // Convert to base64
+    return btoa(String.fromCharCode(...combined));
+  } catch (error) {
+    console.error('[Crypto] Encryption error:', error);
+    throw new Error('Не удалось зашифровать данные');
+  }
+}
+
+/**
+ * Decrypts data encrypted with XChaCha20-Poly1305
+ * @param encryptedData - Base64-encoded encrypted data with nonce
+ * @returns Decrypted plaintext string
+ */
+function decryptWithXChaCha20(encryptedData: string): string {
+  try {
+    // Decode from base64
+    const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
+    
+    // Extract nonce (first 24 bytes) and ciphertext
+    const nonce = combined.slice(0, 24);
+    const ciphertext = combined.slice(24);
+    
+    // Decrypt
+    const cipher = xchacha20poly1305(ENCRYPTION_KEY, nonce);
+    const decrypted = cipher.decrypt(ciphertext);
+    
+    // Convert back to string
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch (error) {
+    console.error('[Crypto] Decryption error:', error);
+    throw new Error('Не удалось расшифровать данные');
+  }
+}
+
+// ========================================
+// PUBLIC API
+// ========================================
 
 /**
  * Encrypts a token string
@@ -26,13 +104,7 @@ function xorCipher(text: string, key: string): string {
  * @returns Encrypted and base64-encoded token
  */
 export function encryptToken(token: string): string {
-  try {
-    const xored = xorCipher(token, ENCRYPTION_KEY);
-    return btoa(xored);
-  } catch (error) {
-    console.error('[Crypto] Encryption error:', error);
-    throw new Error('Не удалось зашифровать токен');
-  }
+  return encryptWithXChaCha20(token);
 }
 
 /**
@@ -41,13 +113,7 @@ export function encryptToken(token: string): string {
  * @returns Decrypted token
  */
 export function decryptToken(encryptedToken: string): string {
-  try {
-    const decoded = atob(encryptedToken);
-    return xorCipher(decoded, ENCRYPTION_KEY);
-  } catch (error) {
-    console.error('[Crypto] Decryption error:', error);
-    throw new Error('Не удалось расшифровать токен');
-  }
+  return decryptWithXChaCha20(encryptedToken);
 }
 
 /**
@@ -56,14 +122,8 @@ export function decryptToken(encryptedToken: string): string {
  * @returns Encrypted and base64-encoded JSON string
  */
 export function encryptServerConfig(data: any): string {
-  try {
-    const jsonString = JSON.stringify(data);
-    const xored = xorCipher(jsonString, ENCRYPTION_KEY);
-    return btoa(xored);
-  } catch (error) {
-    console.error('[Crypto] Server config encryption error:', error);
-    throw new Error('Не удалось зашифровать конфигурацию сервера');
-  }
+  const jsonString = JSON.stringify(data);
+  return encryptWithXChaCha20(jsonString);
 }
 
 /**
@@ -72,32 +132,26 @@ export function encryptServerConfig(data: any): string {
  * @returns Decrypted server configuration object
  */
 export function decryptServerConfig(encryptedData: string): any {
-  try {
-    const decoded = atob(encryptedData);
-    const xored = xorCipher(decoded, ENCRYPTION_KEY);
-    return JSON.parse(xored);
-  } catch (error) {
-    console.error('[Crypto] Server config decryption error:', error);
-    throw new Error('Не удалось расшифровать конфигурацию сервера');
-  }
+  const jsonString = decryptWithXChaCha20(encryptedData);
+  return JSON.parse(jsonString);
 }
 
 /**
- * Encrypts data using XOR cipher and base64 encoding
- * @param data - The data to encrypt
- * @returns Encrypted and base64-encoded data
+ * Encrypts generic data (async version for compatibility)
+ * @param data - The data to encrypt (as JSON string)
+ * @returns Promise with encrypted data
  */
 export function encryptData(data: string): Promise<string> {
-  return Promise.resolve(encryptServerConfig(JSON.parse(data)));
+  return Promise.resolve(encryptWithXChaCha20(data));
 }
 
 /**
- * Decrypts encrypted data
+ * Decrypts encrypted data (async version for compatibility)
  * @param encryptedData - The encrypted data to decrypt
- * @returns Decrypted data
+ * @returns Promise with decrypted data
  */
 export function decryptData(encryptedData: string): Promise<string> {
-  return Promise.resolve(JSON.stringify(decryptServerConfig(encryptedData)));
+  return Promise.resolve(decryptWithXChaCha20(encryptedData));
 }
 
 /**
