@@ -5,11 +5,9 @@
  */
 
 import { xchacha20poly1305 } from '@noble/ciphers/chacha';
-import { randomBytes } from '@noble/ciphers/webcrypto';
 
 // ========================================
 // ENCRYPTION KEY MANAGEMENT
-// ========================================
 
 /**
  * Generates a secure encryption key from environment or creates a new one
@@ -52,7 +50,7 @@ function encryptWithXChaCha20(plaintext: string): string {
     
     // Create cipher and encrypt
     const cipher = xchacha20poly1305(ENCRYPTION_KEY, nonce);
-    const encrypted = cipher.encrypt(data);
+        const noncrypto.getRandomValues(new Uint8Array(24));
     
     // Combine nonce + encrypted data
     const combined = new Uint8Array(nonce.length + encrypted.length);
