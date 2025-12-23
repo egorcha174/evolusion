@@ -377,7 +377,9 @@ export async function addServer(
     // Добавляем сервер
     servers.update(s => {
       const updated = [...s, newServer];
+      // Сохраняем в оба хранилища для совместимости
       saveServersToStorage(updated);
+      persistedServers.set(updated);
       return updated;
     });
 
@@ -407,7 +409,9 @@ export function removeServer(serverId: string): void {
   // Удаляем сервер из списка
   servers.update(s => {
     const updated = s.filter((server: HAServerConfig) => server.id !== serverId);
+    // Сохраняем в оба хранилища для совместимости
     saveServersToStorage(updated);
+    persistedServers.set(updated);
     return updated;
   });
 
@@ -461,20 +465,62 @@ export const activeClient = derived(
  * и синхронизируем с persisted stores
  */
 if (typeof window !== 'undefined') {
-  // Загружаем начальные данные из persisted stores
-  const initialServers = get(persistedServers) || [];
-  servers.set(initialServers);
+  // Сначала загружаем данные из legacy storage
+  const legacyServers = loadServersFromStorage();
+  const legacyActiveServerId = loadActiveServerIdFromStorage();
 
-  const initialActiveServerId = get(persistedActiveServerId) || null;
-  activeServerId.set(initialActiveServerId);
+  // Проверяем, есть ли данные в persisted storage (асинхронно)
+  // Используем таймаут, чтобы дать время на загрузку persisted stores
+  setTimeout(async () => {
+    try {
+      // Проверяем текущие значения в persisted stores
+      let currentServers = get(persistedServers) || [];
+      let currentActiveServerId = get(persistedActiveServerId) || null;
 
-  // Подписываемся на изменения writable stores и синхронизируем с persisted stores
-  // Без обратной синхронизации, чтобы избежать циклических зависимостей
-  servers.subscribe((value) => {
-    persistedServers.set(value);
-  });
+      // Если persisted stores пустые, но есть данные в legacy storage - мигрируем
+      if ((!currentServers || currentServers.length === 0) && legacyServers.length > 0) {
+        console.log('[Servers] Миграция данных из legacy storage в persisted storage');
+        currentServers = legacyServers;
+        persistedServers.set(currentServers);
+      }
 
-  activeServerId.subscribe((value) => {
-    persistedActiveServerId.set(value);
-  });
+      // Если активный сервер не установлен в persisted store, но есть в legacy - мигрируем
+      if (!currentActiveServerId && legacyActiveServerId) {
+        console.log('[Servers] Миграция активного сервера из legacy storage');
+        currentActiveServerId = legacyActiveServerId;
+        persistedActiveServerId.set(currentActiveServerId);
+      }
+
+      // Устанавливаем начальные значения
+      servers.set(currentServers);
+      activeServerId.set(currentActiveServerId);
+
+      // Подписываемся на изменения writable stores и синхронизируем с persisted stores
+      // Без обратной синхронизации, чтобы избежать циклических зависимостей
+      servers.subscribe((value) => {
+        persistedServers.set(value);
+      });
+
+      activeServerId.subscribe((value) => {
+        persistedActiveServerId.set(value);
+      });
+
+      console.log('[Servers] Инициализация завершена. Серверы:', currentServers.length, 'Активный сервер:', currentActiveServerId);
+    } catch (error) {
+      console.error('[Servers] Ошибка при инициализации:', error);
+
+      // В случае ошибки загружаем из legacy storage
+      servers.set(legacyServers);
+      activeServerId.set(legacyActiveServerId);
+
+      // Подписываемся на изменения
+      servers.subscribe((value) => {
+        persistedServers.set(value);
+      });
+
+      activeServerId.subscribe((value) => {
+        persistedActiveServerId.set(value);
+      });
+    }
+  }, 100); // Небольшая задержка, чтобы дать время на асинхронную загрузку
 }

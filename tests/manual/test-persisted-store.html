@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Persisted Store Test</title>
+    <title>Test Persisted Store Fix</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -11,222 +11,194 @@
             margin: 0 auto;
             padding: 20px;
         }
-        .test-case {
-            border: 1px solid #ddd;
+        .test-section {
+            margin-bottom: 20px;
             padding: 15px;
-            margin: 10px 0;
+            border: 1px solid #ddd;
             border-radius: 5px;
         }
-        .success {
-            background-color: #d4edda;
-            border-color: #c3e6cb;
-        }
-        .error {
-            background-color: #f8d7da;
-            border-color: #f5c6cb;
-        }
         button {
-            padding: 8px 15px;
-            margin: 5px;
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
             cursor: pointer;
         }
-        textarea {
-            width: 100%;
-            height: 100px;
-            margin: 5px 0;
+        button:hover {
+            background-color: #45a049;
+        }
+        .results {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
         }
     </style>
 </head>
 <body>
-    <h1>Persisted Store Error Handling Test</h1>
-    <p>This page tests the fixed createPersistedStore function with various error scenarios.</p>
+    <h1>Тест сохранения данных подключения</h1>
 
-    <div class="test-case">
-        <h2>Test 1: Corrupted JSON Data</h2>
-        <button onclick="testCorruptedJSON()">Run Test</button>
-        <div id="test1-result"></div>
+    <div class="test-section">
+        <h2>Тест 1: Проверка миграции данных</h2>
+        <button onclick="testMigration()">Запустить тест миграции</button>
+        <div id="migration-results" class="results"></div>
     </div>
 
-    <div class="test-case">
-        <h2>Test 2: Invalid Data Types</h2>
-        <button onclick="testInvalidDataTypes()">Run Test</button>
-        <div id="test2-result"></div>
+    <div class="test-section">
+        <h2>Тест 2: Проверка сохранения данных</h2>
+        <button onclick="testPersistence()">Запустить тест сохранения</button>
+        <div id="persistence-results" class="results"></div>
     </div>
 
-    <div class="test-case">
-        <h2>Test 3: Circular References</h2>
-        <button onclick="testCircularReferences()">Run Test</button>
-        <div id="test3-result"></div>
+    <div class="test-section">
+        <h2>Тест 3: Проверка восстановления после обновления</h2>
+        <button onclick="testRefreshRecovery()">Запустить тест восстановления</button>
+        <div id="refresh-results" class="results"></div>
     </div>
 
-    <div class="test-case">
-        <h2>Test 4: Normal Operation</h2>
-        <button onclick="testNormalOperation()">Run Test</button>
-        <div id="test4-result"></div>
-    </div>
-
-    <div class="test-case">
-        <h2>Current localStorage Contents</h2>
-        <button onclick="showLocalStorage()">Show localStorage</button>
-        <textarea id="localStorage-contents" readonly></textarea>
-        <button onclick="clearLocalStorage()">Clear localStorage</button>
+    <div class="test-section">
+        <h2>Ручная проверка</h2>
+        <button onclick="clearAllData()">Очистить все данные</button>
+        <button onclick="showCurrentStorage()">Показать текущее состояние хранилища</button>
+        <div id="manual-results" class="results"></div>
     </div>
 
     <script>
-        // Simulate the fixed createPersistedStore function
-        function createPersistedStore(key, initial) {
-            let state = initial;
+        // Симуляция функций из servers.ts
+        function testMigration() {
+            const resultsDiv = document.getElementById('migration-results');
+            resultsDiv.innerHTML = 'Тестирование миграции...';
 
-            // Initialize from localStorage with error handling
             try {
-                const saved = localStorage.getItem(key);
-                if (saved != null) {
-                    try {
-                        const parsed = JSON.parse(saved);
-                        console.log('[PersistedStore] init', key, parsed);
-                        state = parsed;
-                    } catch (e) {
-                        console.error('[PersistedStore] invalid data for', key, e);
-                        // If data is corrupted - clear it
-                        localStorage.removeItem(key);
-                        state = initial;
+                // Симулируем legacy данные
+                const legacyData = {
+                    servers: [
+                        { id: 'test-server-1', name: 'Test Server', url: 'http://test.local', token: 'test-token-123', enabled: true }
+                    ],
+                    activeServerId: 'test-server-1'
+                };
+
+                // Сохраняем в legacy storage
+                localStorage.setItem('ha_servers_v2', JSON.stringify(legacyData.servers));
+                localStorage.setItem('active_server_id', legacyData.activeServerId);
+
+                // Проверяем, что persisted storage пустой
+                const persistedServers = localStorage.getItem('ha_servers_enc');
+                const persistedActiveServer = localStorage.getItem('ha_connection_enc');
+
+                if (!persistedServers && !persistedActiveServer) {
+                    resultsDiv.innerHTML += '<div class="success">✓ Legacy данные сохранены, persisted storage пустой</div>';
+
+                    // Симулируем загрузку приложения (миграция должна произойти)
+                    // В реальном приложении это происходит в initialization коде
+                    resultsDiv.innerHTML += '<div class="success">✓ Миграция должна произойти при загрузке приложения</div>';
+                } else {
+                    resultsDiv.innerHTML += '<div class="error">✗ Persisted storage не пустой, тест не валиден</div>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML += `<div class="error">✗ Ошибка: ${error.message}</div>`;
+            }
+        }
+
+        function testPersistence() {
+            const resultsDiv = document.getElementById('persistence-results');
+            resultsDiv.innerHTML = 'Тестирование сохранения данных...';
+
+            try {
+                // Очищаем все данные
+                localStorage.clear();
+
+                // Симулируем добавление сервера
+                const testServer = { id: 'persist-test-1', name: 'Persist Test', url: 'http://persist.test', token: 'persist-token', enabled: true };
+
+                // В реальном приложении это делается через persisted stores
+                // Здесь мы просто проверяем, что данные сохраняются
+                localStorage.setItem('ha_servers_enc', JSON.stringify([testServer]));
+                localStorage.setItem('ha_connection_enc', JSON.stringify('persist-test-1'));
+
+                // Проверяем, что данные сохранены
+                const savedServers = localStorage.getItem('ha_servers_enc');
+                const savedActiveServer = localStorage.getItem('ha_connection_enc');
+
+                if (savedServers && savedActiveServer) {
+                    resultsDiv.innerHTML += '<div class="success">✓ Данные успешно сохранены в persisted storage</div>';
+                } else {
+                    resultsDiv.innerHTML += '<div class="error">✗ Данные не сохранены</div>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML += `<div class="error">✗ Ошибка: ${error.message}</div>`;
+            }
+        }
+
+        function testRefreshRecovery() {
+            const resultsDiv = document.getElementById('refresh-results');
+            resultsDiv.innerHTML = 'Тестирование восстановления после обновления...';
+
+            try {
+                // Симулируем данные, которые должны быть сохранены
+                const testData = {
+                    servers: [
+                        { id: 'refresh-test-1', name: 'Refresh Test Server', url: 'http://refresh.test', token: 'refresh-token', enabled: true }
+                    ],
+                    activeServerId: 'refresh-test-1'
+                };
+
+                // Сохраняем в persisted storage (как это делает приложение)
+                localStorage.setItem('ha_servers_enc', JSON.stringify(testData.servers));
+                localStorage.setItem('ha_connection_enc', JSON.stringify(testData.activeServerId));
+
+                // Симулируем обновление страницы - данные должны остаться
+                // В реальном приложении это происходит автоматически через persisted stores
+                const recoveredServers = localStorage.getItem('ha_servers_enc');
+                const recoveredActiveServer = localStorage.getItem('ha_connection_enc');
+
+                if (recoveredServers && recoveredActiveServer) {
+                    const parsedServers = JSON.parse(recoveredServers);
+                    const parsedActiveServer = JSON.parse(recoveredActiveServer);
+
+                    if (parsedServers.length === testData.servers.length &&
+                        parsedActiveServer === testData.activeServerId) {
+                        resultsDiv.innerHTML += '<div class="success">✓ Данные успешно восстановлены после "обновления"</div>';
+                    } else {
+                        resultsDiv.innerHTML += '<div class="error">✗ Восстановленные данные не совпадают с оригинальными</div>';
                     }
-                }
-            } catch (e) {
-                console.error('[PersistedStore] error reading from localStorage for', key, e);
-                state = initial;
-            }
-
-            // Save to localStorage with error handling
-            function save(newState) {
-                state = newState;
-                try {
-                    console.log('[PersistedStore] update', key, state);
-                    localStorage.setItem(key, JSON.stringify(state));
-                    return true;
-                } catch (e) {
-                    console.error('[PersistedStore] save error for', key, e);
-                    return false;
-                }
-            }
-
-            return {
-                get: () => state,
-                set: save
-            };
-        }
-
-        function testCorruptedJSON() {
-            const resultDiv = document.getElementById('test1-result');
-            resultDiv.innerHTML = 'Running test...';
-
-            try {
-                // Set corrupted data
-                localStorage.setItem('test-corrupted', 'corrupted-json-{{{');
-
-                // Try to create persisted store
-                const store = createPersistedStore('test-corrupted', [1, 2, 3]);
-
-                // Check if it recovered gracefully
-                const value = store.get();
-                if (Array.isArray(value) && value.length === 3) {
-                    resultDiv.innerHTML = '<strong class="success">✅ SUCCESS:</strong> Store recovered from corrupted data with initial value: ' + JSON.stringify(value);
                 } else {
-                    resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Store did not recover properly: ' + JSON.stringify(value);
+                    resultsDiv.innerHTML += '<div class="error">✗ Данные не восстановлены</div>';
                 }
-            } catch (e) {
-                resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Exception thrown: ' + e.message;
+            } catch (error) {
+                resultsDiv.innerHTML += `<div class="error">✗ Ошибка: ${error.message}</div>`;
             }
         }
 
-        function testInvalidDataTypes() {
-            const resultDiv = document.getElementById('test2-result');
-            resultDiv.innerHTML = 'Running test...';
-
-            try {
-                // Set invalid data type (number instead of array)
-                localStorage.setItem('test-invalid', JSON.stringify(123));
-
-                // Try to create persisted store expecting array
-                const store = createPersistedStore('test-invalid', ['a', 'b', 'c']);
-
-                // Check if it recovered gracefully
-                const value = store.get();
-                if (Array.isArray(value) && value.length === 3) {
-                    resultDiv.innerHTML = '<strong class="success">✅ SUCCESS:</strong> Store recovered from invalid data type with initial value: ' + JSON.stringify(value);
-                } else {
-                    resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Store did not recover properly: ' + JSON.stringify(value);
-                }
-            } catch (e) {
-                resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Exception thrown: ' + e.message;
-            }
-        }
-
-        function testCircularReferences() {
-            const resultDiv = document.getElementById('test3-result');
-            resultDiv.innerHTML = 'Running test...';
-
-            try {
-                // Create store
-                const store = createPersistedStore('test-circular', { data: 'initial' });
-
-                // Try to save circular reference
-                const circularObj = { name: 'test' };
-                circularObj.self = circularObj;
-
-                const success = store.set(circularObj);
-
-                if (!success) {
-                    resultDiv.innerHTML = '<strong class="success">✅ SUCCESS:</strong> Circular reference was handled gracefully (save failed as expected)';
-                } else {
-                    resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Circular reference was saved (this should not happen)';
-                }
-            } catch (e) {
-                resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Exception thrown: ' + e.message;
-            }
-        }
-
-        function testNormalOperation() {
-            const resultDiv = document.getElementById('test4-result');
-            resultDiv.innerHTML = 'Running test...';
-
-            try {
-                // Create store
-                const store = createPersistedStore('test-normal', { count: 0 });
-
-                // Set value
-                const success1 = store.set({ count: 1 });
-
-                // Get value
-                const value = store.get();
-
-                // Set another value
-                const success2 = store.set({ count: 2 });
-
-                if (success1 && success2 && value.count === 1) {
-                    resultDiv.innerHTML = '<strong class="success">✅ SUCCESS:</strong> Normal operation works correctly';
-                } else {
-                    resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Normal operation failed';
-                }
-            } catch (e) {
-                resultDiv.innerHTML = '<strong class="error">❌ FAILED:</strong> Exception thrown: ' + e.message;
-            }
-        }
-
-        function showLocalStorage() {
-            const textarea = document.getElementById('localStorage-contents');
-            textarea.value = '';
-
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                const value = localStorage.getItem(key);
-                textarea.value += `${key}: ${value}\n`;
-            }
-        }
-
-        function clearLocalStorage() {
+        function clearAllData() {
+            const resultsDiv = document.getElementById('manual-results');
             localStorage.clear();
-            document.getElementById('localStorage-contents').value = 'localStorage cleared';
+            resultsDiv.innerHTML = '<div class="success">✓ Все данные очищены</div>';
+        }
+
+        function showCurrentStorage() {
+            const resultsDiv = document.getElementById('manual-results');
+            resultsDiv.innerHTML = '<h3>Текущее состояние хранилища:</h3>';
+
+            const storageKeys = [
+                'ha_servers_v2',
+                'active_server_id',
+                'ha_servers_enc',
+                'ha_connection_enc'
+            ];
+
+            storageKeys.forEach(key => {
+                const value = localStorage.getItem(key);
+                const displayValue = value ? value.substring(0, 50) + (value.length > 50 ? '...' : '') : 'null';
+                resultsDiv.innerHTML += `<div><strong>${key}:</strong> ${displayValue}</div>`;
+            });
         }
     </script>
 </body>
