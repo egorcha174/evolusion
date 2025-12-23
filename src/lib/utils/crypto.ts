@@ -4,7 +4,7 @@
  * Implements XChaCha20-Poly1305 AEAD cipher
  */
 
-import { xchacha20poly1305 } from '@noble/ciphers';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha';
 
 // ========================================
 // ENCRYPTION KEY MANAGEMENT
