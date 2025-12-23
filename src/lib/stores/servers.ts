@@ -160,19 +160,19 @@ function showNotification(
 /**
  * Валидирует и дешифрует конфигурацию сервера
  */
-function validateAndDecryptServer(server: any): HAServerConfig | null {
+async function validateAndDecryptServer(server: any): Promise<HAServerConfig | null> {
   try {
     // Пробуем расшифровать как полную конфигурацию (новый формат)
     // Если это строка - значит это зашифрованная конфигурация
     if (typeof server === 'string') {
-      const decrypted = decryptServerConfig(server);
+      const decrypted = await decryptServerConfig(server);
       return HAServerConfigSchema.parse(decrypted);
     }
     // Если это объект с зашифрованным токеном - старый формат
     else if (server && typeof server.token === 'string' && server.token) {
       const decrypted = {
         ...server,
-        token: decryptToken(server.token)
+        token: await decryptToken(server.token)
       };
       return HAServerConfigSchema.parse(decrypted);
     }
@@ -180,7 +180,7 @@ function validateAndDecryptServer(server: any): HAServerConfig | null {
     else if (server && typeof server.accessToken === 'string' && server.accessToken) {
       const decrypted = {
         ...server,
-        token: decryptToken(server.accessToken)
+        token: await decryptToken(server.accessToken)
       };
       return HAServerConfigSchema.parse(decrypted);
     }
@@ -197,8 +197,8 @@ function validateAndDecryptServer(server: any): HAServerConfig | null {
 /**
  * Шифрует всю конфигурацию сервера
  */
-function encryptServer(server: HAServerConfig): string {
-  return encryptServerConfig(server);
+async function encryptServer(server: HAServerConfig): Promise<string> {
+  return await encryptServerConfig(server);
 }
 
 // ========================================
@@ -247,7 +247,6 @@ function createAndConnectClient(
 ): HAClient {
   const client = new HAClient(serverConfig);
   clients.set(serverId, client);
-
   setConnectionStatus(serverId, 'pending');
 
   client.connect()
@@ -262,7 +261,6 @@ function createAndConnectClient(
     .catch((err) => {
       const message = getErrorMessage(err);
       console.error('[Servers] Ошибка подключения:', err);
-
       setConnectionStatus(serverId, 'error', message);
       showNotification('error', MESSAGES.CONNECTION_ERROR, message, 5000);
 
@@ -281,7 +279,7 @@ function createAndConnectClient(
 /**
  * Загружает серверы из localStorage с валидацией и дешифрованием
  */
-export function loadServersFromStorage(): HAServerConfig[] {
+export async function loadServersFromStorage(): Promise<HAServerConfig[]> {
   try {
     const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
     if (!stored) return [];
@@ -289,11 +287,11 @@ export function loadServersFromStorage(): HAServerConfig[] {
     const parsed = JSON.parse(stored);
 
     // Валидируем и дешифруем каждый сервер
-    const validated = parsed
-      .map(validateAndDecryptServer)
-      .filter((server: any): server is HAServerConfig => server !== null);
-
-    return validated;
+    const validated = await Promise.all(
+      parsed.map(validateAndDecryptServer)
+    );
+    
+    return validated.filter((server): server is HAServerConfig => server !== null);
   } catch (error) {
     console.error('[Servers] Ошибка при загрузке серверов:', error);
     showNotification(
@@ -311,9 +309,9 @@ export function loadServersFromStorage(): HAServerConfig[] {
 /**
  * Сохраняет серверы в localStorage с шифрованием
  */
-export function saveServersToStorage(serversData: HAServerConfig[]): void {
+export async function saveServersToStorage(serversData: HAServerConfig[]): Promise<void> {
   try {
-    const encrypted = serversData.map(encryptServer);
+    const encrypted = await Promise.all(serversData.map(encryptServer));
     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(encrypted));
   } catch (error) {
     console.error('[Servers] Ошибка при сохранении серверов:', error);
@@ -461,66 +459,4 @@ export const activeClient = derived(
 // ========================================
 
 /**
- * Инициализация: загружаем серверы и активный сервер при старте
- * и синхронизируем с persisted stores
- */
-if (typeof window !== 'undefined') {
-  // Сначала загружаем данные из legacy storage
-  const legacyServers = loadServersFromStorage();
-  const legacyActiveServerId = loadActiveServerIdFromStorage();
-
-  // Проверяем, есть ли данные в persisted storage (асинхронно)
-  // Используем таймаут, чтобы дать время на загрузку persisted stores
-  setTimeout(async () => {
-    try {
-      // Проверяем текущие значения в persisted stores
-      let currentServers = get(persistedServers) || [];
-      let currentActiveServerId = get(persistedActiveServerId) || null;
-
-      // Если persisted stores пустые, но есть данные в legacy storage - мигрируем
-      if ((!currentServers || currentServers.length === 0) && legacyServers.length > 0) {
-        console.log('[Servers] Миграция данных из legacy storage в persisted storage');
-        currentServers = legacyServers;
-        persistedServers.set(currentServers);
-      }
-
-      // Если активный сервер не установлен в persisted store, но есть в legacy - мигрируем
-      if (!currentActiveServerId && legacyActiveServerId) {
-        console.log('[Servers] Миграция активного сервера из legacy storage');
-        currentActiveServerId = legacyActiveServerId;
-        persistedActiveServerId.set(currentActiveServerId);
-      }
-
-      // Устанавливаем начальные значения
-      servers.set(currentServers);
-      activeServerId.set(currentActiveServerId);
-
-      // Подписываемся на изменения writable stores и синхронизируем с persisted stores
-      // Без обратной синхронизации, чтобы избежать циклических зависимостей
-      servers.subscribe((value) => {
-        persistedServers.set(value);
-      });
-
-      activeServerId.subscribe((value) => {
-        persistedActiveServerId.set(value);
-      });
-
-      console.log('[Servers] Инициализация завершена. Серверы:', currentServers.length, 'Активный сервер:', currentActiveServerId);
-    } catch (error) {
-      console.error('[Servers] Ошибка при инициализации:', error);
-
-      // В случае ошибки загружаем из legacy storage
-      servers.set(legacyServers);
-      activeServerId.set(legacyActiveServerId);
-
-      // Подписываемся на изменения
-      servers.subscribe((value) => {
-        persistedServers.set(value);
-      });
-
-      activeServerId.subscribe((value) => {
-        persistedActiveServerId.set(value);
-      });
-    }
-  }, 100); // Небольшая задержка, чтобы дать время на асинхронную загрузку
-}
+ * Инициализация:
