@@ -50,7 +50,7 @@ function encryptWithXChaCha20(plaintext: string): string {
     
     // Create cipher and encrypt
     const cipher = xchacha20poly1305(ENCRYPTION_KEY, nonce);
-        const noncrypto.getRandomValues(new Uint8Array(24));
+            const nonce = crypto.getRandomValues(new Uint8Array(24));
     
     // Combine nonce + encrypted data
     const combined = new Uint8Array(nonce.length + encrypted.length);
