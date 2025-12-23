@@ -1,62 +1,81 @@
 /**
  * Utility functions for encrypting and decrypting sensitive data
- * Uses @noble/ciphers for cryptographically secure encryption
- * Implements XChaCha20-Poly1305 AEAD cipher
+ * Uses Web Crypto API (AES-GCM) for secure encryption
+ * Temporary solution until @noble/ciphers is properly installed
  */
-
-import { xchacha20poly1305 } from '@noble/ciphers/chacha';
 
 // ========================================
 // ENCRYPTION KEY MANAGEMENT
+// ========================================
 
 /**
- * Generates a secure encryption key from environment or creates a new one
- * In production, this should come from environment variables
+ * Derives a crypto key from a passphrase
  */
-function getEncryptionKey(): Uint8Array {
-  // WARNING: In production, use a key from environment variables!
-  // For now, we'll derive from a constant (not ideal, but better than XOR)
-  const keyString = 'evolusion-ha-secure-key-v2-xchacha20poly1305';
+async function deriveKey(passphrase: string): Promise<CryptoKey> {
   const encoder = new TextEncoder();
-  const keyData = encoder.encode(keyString);
-  
-  // Ensure key is exactly 32 bytes
-  const key = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) {
-    key[i] = keyData[i % keyData.length];
-  }
-  
-  return key;
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(passphrase),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits', 'deriveKey']
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: encoder.encode('evolusion-ha-salt-v1'),
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
 }
 
-const ENCRYPTION_KEY = getEncryptionKey();
+let ENCRYPTION_KEY: CryptoKey | null = null;
+const KEY_PASSPHRASE = 'evolusion-ha-secure-key-v2-aes-gcm';
+
+/**
+ * Gets or creates the encryption key
+ */
+async function getEncryptionKey(): Promise<CryptoKey> {
+  if (!ENCRYPTION_KEY) {
+    ENCRYPTION_KEY = await deriveKey(KEY_PASSPHRASE);
+  }
+  return ENCRYPTION_KEY;
+}
 
 // ========================================
 // CORE ENCRYPTION FUNCTIONS
 // ========================================
 
 /**
- * Encrypts data using XChaCha20-Poly1305
- * @param plaintext - The data to encrypt
- * @returns Base64-encoded encrypted data with nonce prepended
+ * Encrypts data using AES-GCM
  */
-function encryptWithXChaCha20(plaintext: string): string {
+async function encryptWithAES(plaintext: string): Promise<string> {
   try {
     const encoder = new TextEncoder();
     const data = encoder.encode(plaintext);
-
-    // Generate random 24-byte nonce for XChaCha20
-    const nonce = crypto.getRandomValues(new Uint8Array(24));
-
-    // Create cipher and encrypt
-    const cipher = xchacha20poly1305(ENCRYPTION_KEY, nonce);
-    const encrypted = cipher.encrypt(data);
-
-    // Combine nonce + encrypted data
-    const combined = new Uint8Array(nonce.length + encrypted.length);
-    combined.set(nonce, 0);
-    combined.set(encrypted, nonce.length);
-
+    const key = await getEncryptionKey();
+    
+    // Generate random 12-byte IV for AES-GCM
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    
+    // Encrypt
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      data
+    );
+    
+    // Combine IV + encrypted data
+    const combined = new Uint8Array(iv.length + encrypted.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(encrypted), iv.length);
+    
     // Convert to base64
     return btoa(String.fromCharCode(...combined));
   } catch (error) {
@@ -66,22 +85,25 @@ function encryptWithXChaCha20(plaintext: string): string {
 }
 
 /**
- * Decrypts data encrypted with XChaCha20-Poly1305
- * @param encryptedData - Base64-encoded encrypted data with nonce
- * @returns Decrypted plaintext string
+ * Decrypts data encrypted with AES-GCM
  */
-function decryptWithXChaCha20(encryptedData: string): string {
+async function decryptWithAES(encryptedData: string): Promise<string> {
   try {
+    const key = await getEncryptionKey();
+    
     // Decode from base64
     const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
     
-    // Extract nonce (first 24 bytes) and ciphertext
-    const nonce = combined.slice(0, 24);
-    const ciphertext = combined.slice(24);
+    // Extract IV (first 12 bytes) and ciphertext
+    const iv = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
     
     // Decrypt
-    const cipher = xchacha20poly1305(ENCRYPTION_KEY, nonce);
-    const decrypted = cipher.decrypt(ciphertext);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      ciphertext
+    );
     
     // Convert back to string
     const decoder = new TextDecoder();
@@ -98,63 +120,50 @@ function decryptWithXChaCha20(encryptedData: string): string {
 
 /**
  * Encrypts a token string
- * @param token - The token to encrypt
- * @returns Encrypted and base64-encoded token
  */
-export function encryptToken(token: string): string {
-  return encryptWithXChaCha20(token);
+export async function encryptToken(token: string): Promise<string> {
+  return await encryptWithAES(token);
 }
 
 /**
  * Decrypts an encrypted token string
- * @param encryptedToken - The encrypted token to decrypt
- * @returns Decrypted token
  */
-export function decryptToken(encryptedToken: string): string {
-  return decryptWithXChaCha20(encryptedToken);
+export async function decryptToken(encryptedToken: string): Promise<string> {
+  return await decryptWithAES(encryptedToken);
 }
 
 /**
  * Encrypts an entire server configuration object
- * @param data - The server configuration object to encrypt
- * @returns Encrypted and base64-encoded JSON string
  */
-export function encryptServerConfig(data: any): string {
+export async function encryptServerConfig(data: any): Promise<string> {
   const jsonString = JSON.stringify(data);
-  return encryptWithXChaCha20(jsonString);
+  return await encryptWithAES(jsonString);
 }
 
 /**
  * Decrypts an encrypted server configuration
- * @param encryptedData - The encrypted server configuration string
- * @returns Decrypted server configuration object
  */
-export function decryptServerConfig(encryptedData: string): any {
-  const jsonString = decryptWithXChaCha20(encryptedData);
+export async function decryptServerConfig(encryptedData: string): Promise<any> {
+  const jsonString = await decryptWithAES(encryptedData);
   return JSON.parse(jsonString);
 }
 
 /**
- * Encrypts generic data (async version for compatibility)
- * @param data - The data to encrypt (as JSON string)
- * @returns Promise with encrypted data
+ * Encrypts generic data
  */
-export function encryptData(data: string): Promise<string> {
-  return Promise.resolve(encryptWithXChaCha20(data));
+export async function encryptData(data: string): Promise<string> {
+  return await encryptWithAES(data);
 }
 
 /**
- * Decrypts encrypted data (async version for compatibility)
- * @param encryptedData - The encrypted data to decrypt
- * @returns Promise with decrypted data
+ * Decrypts encrypted data
  */
-export function decryptData(encryptedData: string): Promise<string> {
-  return Promise.resolve(decryptWithXChaCha20(encryptedData));
+export async function decryptData(encryptedData: string): Promise<string> {
+  return await decryptWithAES(encryptedData);
 }
 
 /**
  * Generates a random UUID v4
- * @returns Random UUID string
  */
 export function generateId(): string {
   return crypto.randomUUID();
