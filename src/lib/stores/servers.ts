@@ -1,453 +1,198 @@
-import { writable, get, derived } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import type { HAServerConfig } from '../types/ha';
 import { HAClient } from '../api/ha-client';
-import { encryptToken, decryptToken, encryptServerConfig, decryptServerConfig, encryptData, decryptData } from '$utils/crypto';
-import { CONFIG, MESSAGES } from '$constants/config';
+import {
+  encryptServerConfig,
+  decryptServerConfig,
+  encryptData,
+  decryptData
+} from '$utils/crypto';
+import { MESSAGES } from '$constants/config';
 import { notifications } from './notifications';
 import { isLoading } from './loading';
 import { z } from 'zod';
 
 // ========================================
-// TYPES & SCHEMAS
+// SCHEMA
 // ========================================
 
-// Zod схема для валидации конфигурации сервера
 const HAServerConfigSchema = z.object({
-  id: z.string().min(1, 'ID обязателен'),
-  name: z.string().min(1, 'Имя обязательно').max(100, 'Имя слишком длинное'),
-  url: z.string().url('Неверный формат URL'),
-  token: z.string().min(10, 'Токен слишком короткий'),
+  id: z.string(),
+  name: z.string().min(1),
+  url: z.string().url(),
+  token: z.string().min(10),
   enabled: z.boolean().default(true)
 });
 
-export type ConnectionStatus = {
-  status: 'ok' | 'error' | 'pending';
-  message?: string
-};
-
 // ========================================
-// ENCRYPTED STORAGE UTILITIES
+// STORAGE KEYS
 // ========================================
 
-/**
- * Загружает данные из localStorage с дешифровкой
- */
-async function loadEncryptedData(key: string): Promise<any> {
-  try {
-    const encrypted = localStorage.getItem(key);
-    if (encrypted) {
-      const decrypted = await decryptData(encrypted);
-      return JSON.parse(decrypted);
-    }
-    return null;
-  } catch (error) {
-    console.error('[EncryptedStorage] Error loading data for', key, error);
-    return null;
-  }
-}
-
-/**
- * Сохраняет данные в localStorage с шифрованием
- */
-async function saveEncryptedData(key: string, data: any): Promise<void> {
-  try {
-    const encrypted = await encryptData(JSON.stringify(data));
-    localStorage.setItem(key, encrypted);
-  } catch (error) {
-    console.error('[EncryptedStorage] Error saving data for', key, error);
-  }
-}
-
-// ========================================
-// ENCRYPTED PERSISTED STORE
-// ========================================
-
-/**
- * Создает зашифрованный persisted-store для Svelte
- * Автоматически синхронизирует состояние с зашифрованным localStorage
- */
-function createEncryptedPersistedStore<T>(key: string, initial: T) {
-  const { subscribe, set, update } = writable<T>(initial);
-
-  if (typeof window !== 'undefined') {
-    // Загружаем и дешифруем данные при инициализации
-    (async () => {
-      try {
-        const loaded = await loadEncryptedData(key);
-        if (loaded !== null) {
-          console.log('[EncryptedStore] init', key, loaded);
-          set(loaded);
-        } else {
-          set(initial);
-        }
-      } catch (e) {
-        console.error('[EncryptedStore] error loading from storage for', key, e);
-        set(initial);
-      }
-    })();
-
-    // Подписываемся на изменения и сохраняем с шифрованием
-    subscribe(async (value) => {
-      try {
-        console.log('[EncryptedStore] update', key, value);
-        await saveEncryptedData(key, value);
-      } catch (e) {
-        console.error('[EncryptedStore] save error for', key, e);
-      }
-    });
-  }
-
-  return {
-    subscribe,
-    set,
-    update
-  };
-}
-
-// ========================================
-// ENCRYPTED PERSISTED STORES
-// ========================================
-
-// Server configurations encrypted persisted store
-const persistedServers = createEncryptedPersistedStore<HAServerConfig[]>('ha_servers_enc', []);
-
-// Active server ID encrypted persisted store
-const persistedActiveServerId = createEncryptedPersistedStore<string | null>('ha_connection_enc', null);
+const SERVERS_KEY = 'ha_servers_enc';
+const ACTIVE_KEY = 'ha_active_server';
 
 // ========================================
 // STORES
 // ========================================
 
 export const servers = writable<HAServerConfig[]>([]);
-
-// Active server ID
 export const activeServerId = writable<string | null>(null);
+export const serverConnectionStatus = writable<
+  Record<string, { status: 'ok' | 'error' | 'pending'; message?: string }>
+>({});
 
-// Active server ID storage key
-const ACTIVE_SERVER_STORAGE_KEY = 'active_server_id';
-
-// Connection status store
-export const serverConnectionStatus = writable<Record<string, ConnectionStatus>>({});
-
-// HA Clients map
 const clients = new Map<string, HAClient>();
 
 // ========================================
-// HELPER FUNCTIONS
+// STORAGE HELPERS
 // ========================================
 
-/**
- * Извлекает сообщение об ошибке из различных типов ошибок
- */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === 'string') return error;
-  return 'Неизвестная ошибка';
-}
-
-/**
- * Показывает уведомление с заданными параметрами
- */
-function showNotification(
-  type: 'success' | 'error' | 'info',
-  title: string,
-  message: string,
-  duration?: number
-): void {
-  notifications.show({ type, title, message, duration });
-}
-
-/**
- * Валидирует и дешифрует конфигурацию сервера
- */
-async function validateAndDecryptServer(server: any): Promise<HAServerConfig | null> {
+async function loadEncrypted<T>(key: string): Promise<T | null> {
   try {
-    // Пробуем расшифровать как полную конфигурацию (новый формат)
-    // Если это строка - значит это зашифрованная конфигурация
-    if (typeof server === 'string') {
-      const decrypted = await decryptServerConfig(server);
-      return HAServerConfigSchema.parse(decrypted);
-    }
-    // Если это объект с зашифрованным токеном - старый формат
-    else if (server && typeof server.token === 'string' && server.token) {
-      const decrypted = {
-        ...server,
-        token: await decryptToken(server.token)
-      };
-      return HAServerConfigSchema.parse(decrypted);
-    }
-    // Если это объект с зашифрованным accessToken - старый формат (для обратной совместимости)
-    else if (server && typeof server.accessToken === 'string' && server.accessToken) {
-      const decrypted = {
-        ...server,
-        token: await decryptToken(server.accessToken)
-      };
-      return HAServerConfigSchema.parse(decrypted);
-    }
-    // Если это уже расшифрованный объект
-    else {
-      return HAServerConfigSchema.parse(server);
-    }
-  } catch (error) {
-    console.error('[Servers] Ошибка валидации сервера:', error);
+    const encrypted = localStorage.getItem(key);
+    if (!encrypted) return null;
+
+    const decrypted = await decryptData(encrypted);
+    return JSON.parse(decrypted) as T;
+  } catch (e) {
+    console.error('[Storage] load error', key, e);
     return null;
   }
 }
 
-/**
- * Шифрует всю конфигурацию сервера
- */
-async function encryptServer(server: HAServerConfig): Promise<string> {
-  return await encryptServerConfig(server);
+async function saveEncrypted(key: string, data: unknown): Promise<void> {
+  try {
+    const encrypted = await encryptData(JSON.stringify(data));
+    localStorage.setItem(key, encrypted);
+  } catch (e) {
+    console.error('[Storage] save error', key, e);
+  }
 }
 
 // ========================================
 // CONNECTION MANAGEMENT
 // ========================================
 
-/**
- * Устанавливает статус подключения для сервера
- */
-export function setConnectionStatus(
-  id: string,
-  status: 'ok' | 'error' | 'pending',
-  message?: string
-): void {
-  serverConnectionStatus.update((prev) => ({
-    ...prev,
-    [id]: { status, message }
-  }));
+function setStatus(id: string, status: 'ok' | 'error' | 'pending', message?: string) {
+  serverConnectionStatus.update((s) => ({ ...s, [id]: { status, message } }));
 }
 
-/**
- * Отключает и удаляет клиент для указанного сервера
- */
-function disconnectClient(serverId: string): void {
-  const client = clients.get(serverId);
+function disconnectClient(id: string) {
+  const client = clients.get(id);
   if (client) {
     client.disconnect();
-    clients.delete(serverId);
+    clients.delete(id);
   }
 }
 
-/**
- * Отключает все клиенты и очищает Map
- */
-export function disconnectAllClients(): void {
-  clients.forEach((client) => client.disconnect());
+export function disconnectAllClients() {
+  clients.forEach((c) => c.disconnect());
   clients.clear();
 }
 
-/**
- * Создает и подключает клиент для указанного сервера
- */
-function createAndConnectClient(
-  serverId: string,
-  serverConfig: HAServerConfig
-): HAClient {
-  const client = new HAClient(serverConfig);
-  clients.set(serverId, client);
-  setConnectionStatus(serverId, 'pending');
+function createClient(id: string, config: HAServerConfig) {
+  const client = new HAClient(config);
+  clients.set(id, client);
 
-  client.connect()
+  setStatus(id, 'pending');
+
+  client
+    .connect()
     .then(() => {
-      setConnectionStatus(serverId, 'ok');
-      showNotification(
-        'success',
-        MESSAGES.CONNECTION_SUCCESS,
-        `Подключение к ${serverConfig.name} успешно установлено`
-      );
+      setStatus(id, 'ok');
+      notifications.show({
+        type: 'success',
+        title: MESSAGES.CONNECTION_SUCCESS,
+        message: `Подключение к ${config.name} установлено`
+      });
     })
     .catch((err) => {
-      const message = getErrorMessage(err);
-      console.error('[Servers] Ошибка подключения:', err);
-      setConnectionStatus(serverId, 'error', message);
-      showNotification('error', MESSAGES.CONNECTION_ERROR, message, 5000);
-
-      // Отключаем клиент при ошибке подключения
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatus(id, 'error', msg);
+      notifications.show({
+        type: 'error',
+        title: MESSAGES.CONNECTION_ERROR,
+        message: msg,
+        duration: 5000
+      });
       client.disconnect();
-      clients.delete(serverId);
+      clients.delete(id);
     });
 
   return client;
 }
 
 // ========================================
-// STORAGE OPERATIONS
+// CRUD
 // ========================================
 
-/**
- * Загружает серверы из localStorage с валидацией и дешифрованием
- */
-export async function loadServersFromStorage(): Promise<HAServerConfig[]> {
-  try {
-    const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-
-    // Валидируем и дешифруем каждый сервер
-    const validated = await Promise.all(
-      parsed.map(validateAndDecryptServer)
-    );
-    
-    return validated.filter((server): server is HAServerConfig => server !== null);
-  } catch (error) {
-    console.error('[Servers] Ошибка при загрузке серверов:', error);
-    showNotification(
-      'error',
-      MESSAGES.STORAGE_ERROR,
-      getErrorMessage(error)
-    );
-
-    // Очищаем поврежденные данные
-    localStorage.removeItem(CONFIG.STORAGE_KEY);
-    return [];
-  }
-}
-
-/**
- * Сохраняет серверы в localStorage с шифрованием
- */
-export async function saveServersToStorage(serversData: HAServerConfig[]): Promise<void> {
-  try {
-    const encrypted = await Promise.all(serversData.map(encryptServer));
-    localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(encrypted));
-  } catch (error) {
-    console.error('[Servers] Ошибка при сохранении серверов:', error);
-    showNotification(
-      'error',
-      MESSAGES.STORAGE_ERROR,
-      'Не удалось сохранить данные серверов'
-    );
-  }
-}
-
-/**
- * Сохраняет активный сервер ID в localStorage
- */
-export function saveActiveServerIdToStorage(serverId: string | null): void {
-  try {
-    if (serverId) {
-      localStorage.setItem(ACTIVE_SERVER_STORAGE_KEY, serverId);
-    } else {
-      localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
-    }
-  } catch (error) {
-    console.error('[Servers] Ошибка при сохранении активного сервера:', error);
-  }
-}
-
-/**
- * Загружает активный сервер ID из localStorage
- */
-export function loadActiveServerIdFromStorage(): string | null {
-  try {
-    const stored = localStorage.getItem(ACTIVE_SERVER_STORAGE_KEY);
-    return stored || null;
-  } catch (error) {
-    console.error('[Servers] Ошибка при загрузке активного сервера:', error);
-    return null;
-  }
-}
-
-// ========================================
-// SERVER CRUD OPERATIONS
-// ========================================
-
-/**
- * Добавляет новый сервер
- */
-export async function addServer(
-  config: Omit<HAServerConfig, 'id'>
-): Promise<{ success: boolean; error?: string }> {
+export async function addServer(config: Omit<HAServerConfig, 'id'>) {
   try {
     isLoading.start();
 
-    // Валидация конфигурации
-    const newServer: HAServerConfig = {
+    const server: HAServerConfig = {
       ...config,
       id: crypto.randomUUID()
     };
 
-    HAServerConfigSchema.parse(newServer);
+    HAServerConfigSchema.parse(server);
 
-    // Добавляем сервер
-    servers.update(s => {
-      const updated = [...s, newServer];
-      // Сохраняем в оба хранилища для совместимости
-      saveServersToStorage(updated);
-      persistedServers.set(updated);
-      return updated;
+    servers.update((list) => [...list, server]);
+
+    notifications.show({
+      type: 'success',
+      title: 'Сервер добавлен',
+      message: `Сервер "${server.name}" успешно добавлен`
     });
 
-    showNotification(
-      'success',
-      'Сервер добавлен',
-      `Сервер "${config.name}" успешно добавлен`
-    );
-
     return { success: true };
-  } catch (error) {
-    const message = getErrorMessage(error);
-    showNotification('error', MESSAGES.VALIDATION_ERROR, message, 5000);
-    return { success: false, error: message };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    notifications.show({
+      type: 'error',
+      title: MESSAGES.VALIDATION_ERROR,
+      message: msg
+    });
+    return { success: false, error: msg };
   } finally {
     isLoading.stop();
   }
 }
 
-/**
- * Удаляет сервер
- */
-export function removeServer(serverId: string): void {
-  // Отключаем клиент если есть
-  disconnectClient(serverId);
+export function removeServer(id: string) {
+  disconnectClient(id);
 
-  // Удаляем сервер из списка
-  servers.update(s => {
-    const updated = s.filter((server: HAServerConfig) => server.id !== serverId);
-    // Сохраняем в оба хранилища для совместимости
-    saveServersToStorage(updated);
-    persistedServers.set(updated);
-    return updated;
-  });
+  servers.update((list) => list.filter((s) => s.id !== id));
 
-  // Удаляем статус подключения
-  serverConnectionStatus.update(s => {
-    const { [serverId]: _, ...rest } = s;
+  serverConnectionStatus.update((s) => {
+    const { [id]: _, ...rest } = s;
     return rest;
   });
 
-  showNotification(
-    'info',
-    'Сервер удален',
-    'Сервер успешно удален из списка'
-  );
+  activeServerId.update((a) => (a === id ? null : a));
+
+  notifications.show({
+    type: 'info',
+    title: 'Сервер удалён',
+    message: 'Сервер успешно удалён'
+  });
 }
 
 // ========================================
-// DERIVED STORES
+// ACTIVE CLIENT
 // ========================================
 
-/**
- * Active client store с улучшенной обработкой ошибок
- */
 export const activeClient = derived(
   [servers, activeServerId],
-  ([$servers, $activeServerId]) => {
-    if (!$activeServerId) return null;
+  ([$servers, $id]) => {
+    if (!$id) return null;
 
-    // Проверяем существующий клиент
-    let client = clients.get($activeServerId);
+    let client = clients.get($id);
     if (client) return client;
 
-    // Находим конфигурацию сервера
-    const serverConfig = $servers.find(s => s.id === $activeServerId);
-
-    // Создаем новый клиент если сервер найден и включен
-    if (serverConfig?.enabled) {
-      return createAndConnectClient($activeServerId, serverConfig);
+    const config = $servers.find((s) => s.id === $id);
+    if (config && config.enabled) {
+      return createClient($id, config);
     }
 
     return null;
@@ -455,8 +200,53 @@ export const activeClient = derived(
 );
 
 // ========================================
-// INITIALIZATION & SYNCHRONIZATION
+// INITIALIZATION
 // ========================================
 
-/**
- * Инициализация:
+if (typeof window !== 'undefined') {
+  (async () => {
+    // -----------------------------
+    // 1. Load servers
+    // -----------------------------
+    const raw = await loadEncrypted<string[]>(SERVERS_KEY);
+    let list: HAServerConfig[] = [];
+
+    if (Array.isArray(raw)) {
+      list = (
+        await Promise.all(
+          raw.map(async (enc) => {
+            try {
+              const dec = await decryptServerConfig(enc);
+              return HAServerConfigSchema.parse(dec);
+            } catch (e) {
+              console.error('[Servers] invalid encrypted config', e);
+              return null;
+            }
+          })
+        )
+      ).filter((s): s is HAServerConfig => s !== null);
+    }
+
+    servers.set(list);
+
+    // -----------------------------
+    // 2. Load active server
+    // -----------------------------
+    const active = await loadEncrypted<string | null>(ACTIVE_KEY);
+    activeServerId.set(active ?? null);
+
+    // -----------------------------
+    // 3. Persist on change
+    // -----------------------------
+    servers.subscribe(async (value) => {
+      const encrypted = await Promise.all(value.map((s) => encryptServerConfig(s)));
+      await saveEncrypted(SERVERS_KEY, encrypted);
+    });
+
+    activeServerId.subscribe(async (value) => {
+      await saveEncrypted(ACTIVE_KEY, value);
+    });
+
+    console.log('[Servers] init complete:', list.length, 'servers');
+  })();
+}
